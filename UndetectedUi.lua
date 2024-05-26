@@ -204,7 +204,7 @@ function Iris._cycle()
 	end
 	local compatibleParent = (
 		Iris.parentInstance:IsA("GuiBase2d") or 
-		Iris.parentInstance:IsA("CoreGui") or 
+		Iris.parentInstance:IsA("CoreGui").DevConsoleMaster.DevConsoleWindow or 
 		Iris.parentInstance:IsA("PluginGui") or 
 		Iris.parentInstance:IsA("PlayerGui")
 	) 
