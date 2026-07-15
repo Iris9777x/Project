@@ -42,6 +42,18 @@ local Theme = {
 	CornerSmall   = UDim.new(0, 3),
 }
 
+local Icons = {
+	Eye      = "rbxassetid://130003477074963",
+	Info     = "rbxassetid://14179359804",
+	Gear     = "rbxassetid://14179228816",
+	Location = "rbxassetid://14179041224",
+	Settings = "rbxassetid://89833573786776",
+	Cursor   = "rbxassetid://126503880099777",
+	Chevron  = "rbxassetid://129817406781405",
+	Lock     = "rbxassetid://117626470163415",
+	Pin      = "rbxassetid://101812386473600",
+}
+
 local function create(class, props, children)
 	local inst = Instance.new(class)
 	for k, v in pairs(props or {}) do
@@ -132,20 +144,34 @@ end
 local ProGui = {}
 ProGui.__index = ProGui
 ProGui.Theme = Theme
+ProGui.Icons = Icons
 ProGui.Flags = {}
 ProGui._windows = {}
 ProGui._accentObjects = {}
 
-function ProGui:_bindAccent(inst, prop)
-	table.insert(self._accentObjects, { inst = inst, prop = prop })
-	inst[prop] = Theme.Accent
+local function shade(color, factor)
+	return Color3.new(color.R * factor, color.G * factor, color.B * factor)
+end
+
+local function accentShade(name)
+	if name == "dark" then return shade(Theme.Accent, 0.5) end
+	if name == "bg" then return shade(Theme.Accent, 0.259) end
+	return Theme.Accent
+end
+
+function ProGui:_bindAccent(inst, prop, variant)
+	table.insert(self._accentObjects, { inst = inst, prop = prop, variant = variant })
+	inst[prop] = accentShade(variant)
 end
 
 function ProGui:SetAccent(color)
 	Theme.Accent = color
+	Theme.AccentDark = shade(color, 0.5)
+	Theme.AccentBg = shade(color, 0.259)
+	Theme.AccentHover = shade(color, 1.2)
 	for _, entry in ipairs(self._accentObjects) do
 		if entry.inst and entry.inst.Parent then
-			entry.inst[entry.prop] = color
+			entry.inst[entry.prop] = accentShade(entry.variant)
 		end
 	end
 end
@@ -335,9 +361,9 @@ function ProGui:CreateWindow(opts)
 
 	local eyeBtn = create("ImageButton", {
 		Name = "Toggle", BackgroundTransparency = 1,
-		Image = opts.EyeIcon or "rbxassetid://130003477074963",
+		Image = opts.EyeIcon or Icons.Eye,
 		ImageColor3 = Theme.TextDim,
-		Size = UDim2.new(0, 16, 0, 16), Position = UDim2.new(1, -21, 0.5, -8),
+		Size = UDim2.new(0, 18, 0, 18), Position = UDim2.new(1, -24, 0.5, -9),
 		ZIndex = 6, Parent = topWrap.Content,
 	})
 	eyeBtn.MouseEnter:Connect(function() tween(eyeBtn, 0.1, { ImageColor3 = Theme.TextBright }) end)
@@ -441,8 +467,8 @@ function Window:AddTab(opts)
 		BackgroundTransparency = 1,
 		Image = opts.Icon or "",
 		ImageColor3 = Theme.TextDim,
-		Size = UDim2.new(0, 16, 0, 16),
-		Position = UDim2.new(0.5, -8, 0.5, -8),
+		Size = UDim2.new(0, 20, 0, 20),
+		Position = UDim2.new(0.5, -10, 0.5, -10),
 		ZIndex = 9, Parent = btnWrap.Content,
 	})
 
@@ -582,12 +608,18 @@ function Section:AddLabel(opts)
 		Parent = row.Content, Text = opts.Text or "Label",
 		Color = opts.Color or Theme.Text, ZIndex = 14,
 		XAlign = opts.Center and Enum.TextXAlignment.Center or Enum.TextXAlignment.Left,
-		Position = UDim2.new(0, 6, 0, 0), Size = UDim2.new(1, -12, 1, 0),
+		Position = UDim2.new(0, 6, 0, opts.Wrap and 4 or 0),
+		Size = UDim2.new(1, -12, opts.Wrap and 0 or 1, 0),
 	})
-	txt.TextWrapped = opts.Wrap or false
 	if opts.Wrap then
+		txt.TextWrapped = true
 		txt.TextYAlignment = Enum.TextYAlignment.Top
-		row.Content.Parent.Parent.AutomaticSize = Enum.AutomaticSize.Y
+		txt.AutomaticSize = Enum.AutomaticSize.Y
+		local function resize()
+			row.Wrap.Size = UDim2.new(1, 0, 0, txt.AbsoluteSize.Y + 8)
+		end
+		txt:GetPropertyChangedSignal("AbsoluteSize"):Connect(resize)
+		task.defer(resize)
 	end
 	return {
 		SetText = function(_, t) txt.Text = t end,
@@ -600,20 +632,25 @@ function Section:AddButton(opts)
 	local row = self:_row(20)
 	label({
 		Parent = row.Content, Text = opts.Name or "Button",
-		ZIndex = 14, Position = UDim2.new(0, 6, 0, 0), Size = UDim2.new(1, -12, 1, 0),
+		ZIndex = 14, Position = UDim2.new(0, 6, 0, 0), Size = UDim2.new(1, -42, 1, 0),
 	})
-	local hit = create("TextButton", {
-		BackgroundTransparency = 1, Text = "",
-		Size = UDim2.new(1, 0, 1, 0), ZIndex = 16, Parent = row.Content,
-	})
-	hit.MouseEnter:Connect(function() tween(row.Inner, 0.12, { BackgroundColor3 = Theme.InnerHover }) end)
-	hit.MouseLeave:Connect(function() tween(row.Inner, 0.12, { BackgroundColor3 = Theme.InnerFill }) end)
-	hit.MouseButton1Click:Connect(function()
-		tween(row.Inner, 0.08, { BackgroundColor3 = Theme.Accent })
-		task.delay(0.12, function() tween(row.Inner, 0.12, { BackgroundColor3 = Theme.InnerFill }) end)
+
+	local box = create("ImageButton", {
+		Name = "Button", AutoButtonColor = false, ScaleType = Enum.ScaleType.Fit,
+		Image = Icons.Cursor, ImageColor3 = Theme.TextBright,
+		BorderSizePixel = 0,
+		Size = UDim2.new(0, 30, 0, 14), Position = UDim2.new(1, -34, 0.5, -7),
+		ZIndex = 15, Parent = row.Content,
+	}, { corner(Theme.CornerSmall) })
+	self.Lib:_bindAccent(box, "BackgroundColor3")
+
+	local function fire()
+		tween(box, 0.08, { BackgroundColor3 = Theme.AccentHover })
+		task.delay(0.12, function() tween(box, 0.12, { BackgroundColor3 = Theme.Accent }) end)
 		if opts.Callback then task.spawn(opts.Callback) end
-	end)
-	return { Instance = row.Wrap, Fire = function() if opts.Callback then task.spawn(opts.Callback) end end }
+	end
+	box.MouseButton1Click:Connect(fire)
+	return { Instance = row.Wrap, Fire = fire }
 end
 
 function Section:AddToggle(opts)
@@ -627,34 +664,55 @@ function Section:AddToggle(opts)
 		ZIndex = 14, Position = UDim2.new(0, 6, 0, 0), Size = UDim2.new(1, -42, 1, 0),
 	})
 
+	local locked = opts.Locked or false
+
 	local pill = create("ImageButton", {
-		AutoButtonColor = false, ImageTransparency = 1,
-		BackgroundColor3 = state and Theme.Accent or Theme.OuterBorder,
+		Name = "Toggle", AutoButtonColor = false, ImageTransparency = 1,
+		BackgroundColor3 = state and Theme.Accent or Theme.AccentBg,
 		Size = UDim2.new(0, 30, 0, 14), Position = UDim2.new(1, -32, 0.5, -7),
 		ZIndex = 14, Parent = row.Content, BorderSizePixel = 0,
 	}, { corner(UDim.new(1, 0)) })
+	self.Lib:_bindAccent(pill, "BackgroundColor3", state and nil or "bg")
 
 	local dot = create("Frame", {
-		BackgroundColor3 = Theme.TextBright, Size = UDim2.new(0, 12, 0, 12),
+		Name = "Dot", BackgroundColor3 = Theme.TextDim, Size = UDim2.new(0, 12, 0, 12),
 		Position = state and UDim2.new(1, -13, 0.5, -6) or UDim2.new(0, 1, 0.5, -6),
 		ZIndex = 15, BorderSizePixel = 0, Parent = pill,
 	}, { corner(UDim.new(1, 0)) })
 
+	local lock = create("ImageLabel", {
+		Name = "Lock", BackgroundTransparency = 1, Image = Icons.Lock,
+		ImageColor3 = Theme.Black, Visible = locked,
+		Size = UDim2.new(0, 14, 0, 14), Position = UDim2.new(0.5, -7, 0.5, -7),
+		ZIndex = 16, Parent = pill,
+	})
+
 	local api = {}
+	local function bindEntry()
+		for _, e in ipairs(self.Lib._accentObjects) do
+			if e.inst == pill then e.variant = state and nil or "bg" return end
+		end
+	end
 	local function apply(fire)
-		tween(pill, 0.15, { BackgroundColor3 = state and Theme.Accent or Theme.OuterBorder })
-		tween(dot, 0.15, { Position = state and UDim2.new(1, -13, 0.5, -6) or UDim2.new(0, 1, 0.5, -6) })
+		bindEntry()
+		tween(pill, 0.15, { BackgroundColor3 = state and Theme.Accent or Theme.AccentBg })
+		tween(dot, 0.15, {
+			Position = state and UDim2.new(1, -13, 0.5, -6) or UDim2.new(0, 1, 0.5, -6),
+			BackgroundColor3 = state and Theme.TextBright or Theme.TextDim,
+		})
 		registerFlag(self.Lib, opts.Flag, state)
 		if fire and opts.Callback then task.spawn(opts.Callback, state) end
 	end
 
 	pill.MouseButton1Click:Connect(function()
+		if locked then return end
 		state = not state
 		apply(true)
 	end)
 
 	function api:Set(v, silent) state = v and true or false; apply(not silent) end
 	function api:Get() return state end
+	function api:SetLocked(v) locked = v; lock.Visible = v end
 	api.Instance = row.Wrap
 	return api
 end
@@ -686,10 +744,11 @@ function Section:AddSlider(opts)
 	})
 
 	local track = create("Frame", {
-		BackgroundColor3 = Theme.OuterFill, BorderSizePixel = 0,
-		Size = UDim2.new(1, -12, 0, 6), Position = UDim2.new(0, 6, 1, -12),
+		Name = "Slider", BorderSizePixel = 0,
+		Size = UDim2.new(1, -12, 0, 5), Position = UDim2.new(0, 6, 1, -11),
 		ZIndex = 14, Parent = row.Content,
 	}, { corner(UDim.new(1, 0)) })
+	self.Lib:_bindAccent(track, "BackgroundColor3", "bg")
 
 	local fill = create("Frame", {
 		Name = "Fill", BorderSizePixel = 0,
@@ -698,13 +757,27 @@ function Section:AddSlider(opts)
 	}, { corner(UDim.new(1, 0)) })
 	self.Lib:_bindAccent(fill, "BackgroundColor3")
 
+	local handle = create("Frame", {
+		Name = "Handle", BackgroundColor3 = Theme.TextBright, BorderSizePixel = 0,
+		Size = UDim2.new(0, 7, 0, 7), AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new((value - min) / (max - min), 0, 0.5, 0),
+		ZIndex = 16, Parent = track,
+	}, { corner(UDim.new(1, 0)) })
+
+	local function fmt(v)
+		if decimals > 0 then return string.format("%." .. decimals .. "f", v) .. suffix end
+		return tostring(v) .. suffix
+	end
+	valLabel.Text = fmt(round(value))
+
 	local api = {}
 	local function setFromScale(scale, fire)
 		scale = math.clamp(scale, 0, 1)
 		value = round(min + (max - min) * scale)
 		local realScale = (value - min) / (max - min)
 		tween(fill, 0.06, { Size = UDim2.new(realScale, 0, 1, 0) })
-		valLabel.Text = tostring(value) .. suffix
+		tween(handle, 0.06, { Position = UDim2.new(realScale, 0, 0.5, 0) })
+		valLabel.Text = fmt(value)
 		registerFlag(self.Lib, opts.Flag, value)
 		if fire and opts.Callback then task.spawn(opts.Callback, value) end
 	end
@@ -741,50 +814,54 @@ function Section:AddDropdown(opts)
 	local multi = opts.Multi or false
 	local selected = multi and (opts.Default or {}) or (opts.Default or options[1])
 
-	local row = self:_row(20)
+	local row = self:_row(40)
 
 	local function displayText()
 		if multi then
-			local n = 0
-			for _ in pairs(selected) do n += 1 end
-			return n == 0 and "None" or (n .. " selected")
+			local parts = {}
+			for i, opt in ipairs(options) do
+				if selected[opt] then table.insert(parts, tostring(opt)) end
+			end
+			return #parts == 0 and "none" or table.concat(parts, ", ")
 		end
-		return tostring(selected or "None")
+		return tostring(selected or "none")
 	end
 
 	label({
 		Parent = row.Content, Text = opts.Name or "Dropdown",
-		ZIndex = 14, Position = UDim2.new(0, 6, 0, 0), Size = UDim2.new(0.5, -6, 1, 0),
+		ZIndex = 14, Position = UDim2.new(0, 5, 0, 2), Size = UDim2.new(1, -10, 0, 16),
 	})
+
+	local bar = create("TextButton", {
+		Name = "Dropdown", AutoButtonColor = false, Text = "",
+		BackgroundColor3 = Theme.AccentDark, BorderSizePixel = 0,
+		Size = UDim2.new(1, -10, 0, 15), Position = UDim2.new(0, 5, 0, 22),
+		ZIndex = 14, Parent = row.Content,
+	}, { corner(Theme.CornerSmall) })
+	self.Lib:_bindAccent(bar, "BackgroundColor3", "dark")
+
 	local valLabel = label({
-		Parent = row.Content, Text = displayText(),
-		Color = Theme.TextDim, XAlign = Enum.TextXAlignment.Right, ZIndex = 14,
-		Position = UDim2.new(0.5, 0, 0, 0), Size = UDim2.new(0.5, -20, 1, 0),
+		Parent = bar, Text = displayText(), Color = Theme.Text, ZIndex = 15,
+		Position = UDim2.new(0, 6, 0, 0), Size = UDim2.new(1, -22, 1, 0),
 	})
-	local arrow = label({
-		Parent = row.Content, Text = "v", Color = Theme.TextDim,
-		XAlign = Enum.TextXAlignment.Center, ZIndex = 14,
-		Position = UDim2.new(1, -16, 0, 0), Size = UDim2.new(0, 14, 1, 0),
+	local arrow = create("ImageLabel", {
+		Name = "Button", BackgroundTransparency = 1, Image = Icons.Chevron,
+		ImageColor3 = Theme.Text, Size = UDim2.new(0, 11, 0, 11),
+		Position = UDim2.new(1, -14, 0.5, -5), ZIndex = 15, Parent = bar,
 	})
-	arrow.TextSize = 9
 
 	local listWrap = bordered({ Fill = Theme.OuterFill, Border = Theme.OuterBorder, ZIndex = 60 })
-	listWrap.Root.Size = UDim2.new(1, 0, 0, 0)
-	listWrap.Root.Position = UDim2.new(0, 0, 1, 3)
+	listWrap.Root.Size = UDim2.new(1, -10, 0, 0)
+	listWrap.Root.Position = UDim2.new(0, 5, 0, 38)
 	listWrap.Root.Visible = false
 	listWrap.Root.ClipsDescendants = true
-	listWrap.Root.Parent = row.Wrap
+	listWrap.Root.Parent = row.Content
 
 	local listCol = create("Frame", {
 		BackgroundTransparency = 1, Size = UDim2.new(1, -4, 1, -4),
 		Position = UDim2.new(0, 2, 0, 2), ZIndex = 61, Parent = listWrap.Content,
 	}, {
 		create("UIListLayout", { Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder }),
-	})
-
-	local hit = create("TextButton", {
-		BackgroundTransparency = 1, Text = "",
-		Size = UDim2.new(1, 0, 1, 0), ZIndex = 20, Parent = row.Content,
 	})
 
 	local api = {}
@@ -798,7 +875,8 @@ function Section:AddDropdown(opts)
 	local function refresh(fire)
 		valLabel.Text = displayText()
 		for opt, b in pairs(optButtons) do
-			b.TextColor3 = isSelected(opt) and Theme.Accent or Theme.Text
+			b.BackgroundColor3 = isSelected(opt) and Theme.AccentBg or Theme.InnerFill
+			b.TextColor3 = isSelected(opt) and Theme.TextBright or Theme.Text
 		end
 		registerFlag(self.Lib, opts.Flag, selected)
 		if fire and opts.Callback then task.spawn(opts.Callback, selected) end
@@ -811,7 +889,8 @@ function Section:AddDropdown(opts)
 		tween(arrow, 0.15, { Rotation = o and 180 or 0 })
 		local h = o and (#options * 18 + 4) or 0
 		row.Wrap.ZIndex = o and 200 or 11
-		tween(listWrap.Root, 0.15, { Size = UDim2.new(1, 0, 0, h) })
+		row.Wrap.Size = UDim2.new(1, 0, 0, o and (40 + h + 4) or 40)
+		tween(listWrap.Root, 0.15, { Size = UDim2.new(1, -10, 0, h) })
 	end
 
 	local function rebuild()
@@ -819,10 +898,10 @@ function Section:AddDropdown(opts)
 		optButtons = {}
 		for i, opt in ipairs(options) do
 			local b = create("TextButton", {
-				BackgroundColor3 = Theme.InnerFill, BorderSizePixel = 0,
-				AutoButtonColor = false, Text = tostring(opt),
+				BackgroundColor3 = isSelected(opt) and Theme.AccentBg or Theme.InnerFill,
+				BorderSizePixel = 0, AutoButtonColor = false, Text = tostring(opt),
 				FontFace = Theme.Font, TextSize = Theme.TextSize,
-				TextColor3 = isSelected(opt) and Theme.Accent or Theme.Text,
+				TextColor3 = isSelected(opt) and Theme.TextBright or Theme.Text,
 				Size = UDim2.new(1, 0, 0, 16), ZIndex = 62,
 				LayoutOrder = i, Parent = listCol,
 			}, { corner() })
@@ -839,7 +918,7 @@ function Section:AddDropdown(opts)
 		end
 	end
 
-	hit.MouseButton1Click:Connect(function() setOpen(not open) end)
+	bar.MouseButton1Click:Connect(function() setOpen(not open) end)
 	rebuild()
 
 	function api:Set(v, silent) selected = v; refresh(not silent) end
@@ -848,6 +927,7 @@ function Section:AddDropdown(opts)
 		options = newOpts or options
 		if not keep then selected = multi and {} or options[1] end
 		rebuild(); refresh(false)
+		if open then setOpen(true) end
 	end
 	api.Instance = row.Wrap
 	return api
@@ -864,20 +944,21 @@ function Section:AddKeybind(opts)
 	})
 
 	local box = create("TextButton", {
-		BackgroundColor3 = Theme.AccentDark, BorderSizePixel = 0,
+		Name = "Keybind", BorderSizePixel = 0,
 		AutoButtonColor = false, FontFace = Theme.Font, TextSize = Theme.TextSize,
-		TextColor3 = Theme.Text,
+		TextColor3 = Theme.TextBright,
 		Text = key and key.Name or "None",
 		Size = UDim2.new(0, 50, 0, 14), Position = UDim2.new(1, -54, 0.5, -7),
 		ZIndex = 15, Parent = row.Content, ClipsDescendants = true,
 	}, { corner(Theme.CornerSmall) })
+	self.Lib:_bindAccent(box, "BackgroundColor3", "dark")
 
 	local api = {}
 	local listening = false
 	box.MouseButton1Click:Connect(function()
 		listening = true
 		box.Text = "..."
-		box.TextColor3 = Theme.Accent
+		box.TextColor3 = Theme.TextBright
 	end)
 
 	UserInputService.InputBegan:Connect(function(input, gpe)
@@ -888,7 +969,7 @@ function Section:AddKeybind(opts)
 			else
 				key = input.KeyCode; box.Text = key.Name
 			end
-			box.TextColor3 = Theme.Text
+			box.TextColor3 = Theme.TextBright
 			registerFlag(self.Lib, opts.Flag, key and key.Name)
 			if opts.Changed then task.spawn(opts.Changed, key) end
 		elseif not listening and key and input.KeyCode == key and not gpe then
@@ -918,10 +999,11 @@ function Section:AddTextBox(opts)
 			ZIndex = 14, Position = UDim2.new(0, 6, 0, 2), Size = UDim2.new(1, -12, 0, 16),
 		})
 		local field = create("Frame", {
-			BackgroundColor3 = Theme.AccentDark, BorderSizePixel = 0,
+			Name = "TextBox", BackgroundColor3 = Theme.AccentDark, BorderSizePixel = 0,
 			Size = UDim2.new(1, -10, 0, 15), Position = UDim2.new(0, 5, 0, 22),
 			ZIndex = 14, Parent = row.Content,
 		}, { corner(Theme.CornerSmall) })
+		self.Lib:_bindAccent(field, "BackgroundColor3", "dark")
 		local box = create("TextBox", {
 			Name = "Input", BackgroundTransparency = 1,
 			FontFace = Theme.Font, TextSize = Theme.TextSize, TextColor3 = Theme.Text,
@@ -947,13 +1029,14 @@ function Section:AddTextBox(opts)
 		ZIndex = 14, Position = UDim2.new(0, 6, 0, 0), Size = UDim2.new(0.4, -6, 1, 0),
 	})
 	local box = create("TextBox", {
-		BackgroundColor3 = Theme.AccentDark, BorderSizePixel = 0,
+		Name = "TextBox", BackgroundColor3 = Theme.AccentDark, BorderSizePixel = 0,
 		FontFace = Theme.Font, TextSize = Theme.TextSize, TextColor3 = Theme.Text,
 		PlaceholderText = opts.Placeholder or "", PlaceholderColor3 = Theme.TextDim,
 		Text = opts.Default or "", ClearTextOnFocus = false,
 		Size = UDim2.new(0.6, -10, 0, 14), Position = UDim2.new(0.4, 0, 0.5, -7),
 		ZIndex = 15, Parent = row.Content, ClipsDescendants = true,
 	}, { corner(Theme.CornerSmall), create("UIPadding", { PaddingLeft = UDim.new(0, 5), PaddingRight = UDim.new(0, 5) }) })
+	self.Lib:_bindAccent(box, "BackgroundColor3", "dark")
 
 	box.FocusLost:Connect(function(enter)
 		registerFlag(self.Lib, opts.Flag, box.Text)
@@ -1167,7 +1250,7 @@ function Window:AddConfigTab(opts)
 	opts = opts or {}
 	local files = fileApi()
 	local folder = opts.Folder or self._configFolder
-	local tab = self:AddTab({ Name = "Settings", Icon = opts.Icon, Bottom = true, Columns = opts.Columns or 2 })
+	local tab = self:AddTab({ Name = "Settings", Icon = opts.Icon or Icons.Gear, Bottom = true, Columns = opts.Columns or 2 })
 
 	if files then
 		pcall(function()
