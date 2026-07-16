@@ -4,6 +4,7 @@ local TweenService      = game:GetService("TweenService")
 local RunService        = game:GetService("RunService")
 local CoreGui           = game:GetService("CoreGui")
 local HttpService       = game:GetService("HttpService")
+local GuiService        = game:GetService("GuiService")
 
 local LocalPlayer = Players.LocalPlayer
 
@@ -74,6 +75,23 @@ local function tween(inst, time, props, style, dir)
 	local t = TweenService:Create(inst, info, props)
 	t:Play()
 	return t
+end
+
+-- Ensures a UIScale on inst and plays a subtle press-then-bounce animation.
+local function pressBounce(inst, downScale)
+	local ui = inst:FindFirstChildOfClass("UIScale")
+	if not ui then
+		ui = Instance.new("UIScale")
+		ui.Scale = 1
+		ui.Parent = inst
+	end
+	downScale = downScale or 0.92
+	tween(ui, 0.07, { Scale = downScale }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	task.delay(0.07, function()
+		if ui.Parent then
+			tween(ui, 0.3, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+		end
+	end)
 end
 
 local function bordered(props)
@@ -321,7 +339,7 @@ function ProGui:CreateWindow(opts)
 		Parent = screen,
 	})
 
-	local size = opts.Size or UDim2.new(0, 560, 0, 380)
+	local size = opts.Size or UDim2.new(0, 500, 0, 300)
 	local menu = create("Frame", {
 		Name = "Menu",
 		BackgroundColor3 = Theme.Background,
@@ -359,15 +377,22 @@ function ProGui:CreateWindow(opts)
 		Position = UDim2.new(0.5, 0, 0, 0), Size = UDim2.new(0.5, -28, 1, 0),
 	})
 
+	local eyeRest = UDim2.new(1, -24, 0.5, -9)
+	local eyeHover = UDim2.new(1, -24, 0.5, -12)
 	local eyeBtn = create("ImageButton", {
 		Name = "Toggle", BackgroundTransparency = 1,
 		Image = opts.EyeIcon or Icons.Eye,
 		ImageColor3 = Theme.TextDim,
-		Size = UDim2.new(0, 18, 0, 18), Position = UDim2.new(1, -24, 0.5, -9),
+		Size = UDim2.new(0, 18, 0, 18), Position = eyeRest,
 		ZIndex = 6, Parent = topWrap.Content,
 	})
-	eyeBtn.MouseEnter:Connect(function() tween(eyeBtn, 0.1, { ImageColor3 = Theme.TextBright }) end)
-	eyeBtn.MouseLeave:Connect(function() tween(eyeBtn, 0.1, { ImageColor3 = Theme.TextDim }) end)
+	eyeBtn.MouseEnter:Connect(function()
+		tween(eyeBtn, 0.15, { ImageColor3 = Theme.TextBright, Position = eyeHover })
+	end)
+	eyeBtn.MouseLeave:Connect(function()
+		tween(eyeBtn, 0.2, { ImageColor3 = Theme.TextDim, Position = eyeRest })
+	end)
+	eyeBtn.MouseButton1Down:Connect(function() pressBounce(eyeBtn) end)
 
 	local sideWrap = bordered({ Fill = Theme.Topbar, Border = Theme.TopbarBorder, ZIndex = 5 })
 	sideWrap.Root.Size = UDim2.new(0, 40, 1, -40)
@@ -459,9 +484,10 @@ function Window:AddTab(opts)
 	opts = opts or {}
 	local parentList = opts.Bottom and self.BottomList or self.TabList
 
-	local btnWrap = bordered({ Fill = Theme.OuterFill, Border = Theme.OuterBorder, ZIndex = 7 })
+	local btnWrap = bordered({ Fill = Theme.OuterFill, Border = Theme.OuterFill, ZIndex = 7 })
 	btnWrap.Root.Size = UDim2.new(0, 28, 0, 28)
 	btnWrap.Root.Parent = parentList
+	btnWrap.Border.BackgroundTransparency = 1
 
 	local btn = create("ImageButton", {
 		BackgroundTransparency = 1,
@@ -529,19 +555,36 @@ function Window:AddTab(opts)
 		if self._activeTab == tabObj then return end
 		if self._activeTab then
 			local prev = self._activeTab
+			prev._active = false
 			prev.Page.Visible = false
 			tween(prev.ButtonWrap.Root, 0.15, { BackgroundColor3 = Theme.OuterFill })
 			tween(prev.Button, 0.15, { ImageColor3 = Theme.TextDim })
 			if prev.Letter then tween(prev.Letter, 0.15, { TextColor3 = Theme.TextDim }) end
 		end
 		self._activeTab = tabObj
+		tabObj._active = true
 		page.Visible = true
 		tween(btnWrap.Root, 0.15, { BackgroundColor3 = Theme.AccentBg })
 		tween(btn, 0.15, { ImageColor3 = Theme.Accent })
 		if letter then tween(letter, 0.15, { TextColor3 = Theme.TextBright }) end
 	end
 
-	btn.MouseButton1Click:Connect(select)
+	-- Hover: idle tabs fade gray -> white, then back to gray on leave.
+	btn.MouseEnter:Connect(function()
+		if tabObj._active then return end
+		tween(btn, 0.2, { ImageColor3 = Theme.TextBright })
+		if letter then tween(letter, 0.2, { TextColor3 = Theme.TextBright }) end
+	end)
+	btn.MouseLeave:Connect(function()
+		if tabObj._active then return end
+		tween(btn, 0.2, { ImageColor3 = Theme.TextDim })
+		if letter then tween(letter, 0.2, { TextColor3 = Theme.TextDim }) end
+	end)
+
+	btn.MouseButton1Click:Connect(function()
+		pressBounce(btnWrap.Root)
+		select()
+	end)
 	tabObj.Select = select
 	table.insert(self.Tabs, tabObj)
 	if not self._activeTab and not opts.Bottom then select() end
@@ -645,6 +688,7 @@ function Section:AddButton(opts)
 	self.Lib:_bindAccent(box, "BackgroundColor3")
 
 	local function fire()
+		pressBounce(box)
 		tween(box, 0.08, { BackgroundColor3 = Theme.AccentHover })
 		task.delay(0.12, function() tween(box, 0.12, { BackgroundColor3 = Theme.Accent }) end)
 		if opts.Callback then task.spawn(opts.Callback) end
@@ -672,17 +716,18 @@ function Section:AddToggle(opts)
 		Size = UDim2.new(0, 30, 0, 14), Position = UDim2.new(1, -32, 0.5, -7),
 		ZIndex = 14, Parent = row.Content, BorderSizePixel = 0,
 	}, { corner(UDim.new(1, 0)) })
-	self.Lib:_bindAccent(pill, "BackgroundColor3", state and nil or "bg")
+	self.Lib:_bindAccent(pill, "BackgroundColor3", state and "accent" or "bg")
 
 	local dot = create("Frame", {
-		Name = "Dot", BackgroundColor3 = Theme.TextDim, Size = UDim2.new(0, 12, 0, 12),
+		Name = "Dot", BackgroundColor3 = state and Theme.TextBright or Theme.TextDim,
+		Size = UDim2.new(0, 12, 0, 12),
 		Position = state and UDim2.new(1, -13, 0.5, -6) or UDim2.new(0, 1, 0.5, -6),
 		ZIndex = 15, BorderSizePixel = 0, Parent = pill,
 	}, { corner(UDim.new(1, 0)) })
 
 	local lock = create("ImageLabel", {
 		Name = "Lock", BackgroundTransparency = 1, Image = Icons.Lock,
-		ImageColor3 = Theme.Black, Visible = locked,
+		ImageColor3 = Theme.TextBright, Visible = locked,
 		Size = UDim2.new(0, 14, 0, 14), Position = UDim2.new(0.5, -7, 0.5, -7),
 		ZIndex = 16, Parent = pill,
 	})
@@ -690,7 +735,7 @@ function Section:AddToggle(opts)
 	local api = {}
 	local function bindEntry()
 		for _, e in ipairs(self.Lib._accentObjects) do
-			if e.inst == pill then e.variant = state and nil or "bg" return end
+			if e.inst == pill then e.variant = state and "accent" or "bg" return end
 		end
 	end
 	local function apply(fire)
@@ -765,7 +810,7 @@ function Section:AddSlider(opts)
 	}, { corner(UDim.new(1, 0)) })
 
 	local function fmt(v)
-		if decimals > 0 then return string.format("%." .. decimals .. "f", v) .. suffix end
+		if decimals > 0 then return string.format("%.2f", v) .. suffix end
 		return tostring(v) .. suffix
 	end
 	valLabel.Text = fmt(round(value))
@@ -783,6 +828,12 @@ function Section:AddSlider(opts)
 	end
 
 	local dragging = false
+	local function growHandle()
+		tween(handle, 0.12, { Size = UDim2.new(0, 11, 0, 11) }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+	end
+	local function shrinkHandle()
+		tween(handle, 0.18, { Size = UDim2.new(0, 7, 0, 7) })
+	end
 	local function update(input)
 		local rel = (input.Position.X - track.AbsolutePosition.X) / track.AbsoluteSize.X
 		setFromScale(rel, true)
@@ -790,7 +841,7 @@ function Section:AddSlider(opts)
 	track.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1
 		or input.UserInputType == Enum.UserInputType.Touch then
-			dragging = true; update(input)
+			dragging = true; growHandle(); update(input)
 		end
 	end)
 	UserInputService.InputChanged:Connect(function(input)
@@ -799,7 +850,9 @@ function Section:AddSlider(opts)
 	end)
 	UserInputService.InputEnded:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1
-		or input.UserInputType == Enum.UserInputType.Touch then dragging = false end
+		or input.UserInputType == Enum.UserInputType.Touch then
+			if dragging then dragging = false; shrinkHandle() end
+		end
 	end)
 
 	function api:Set(v, silent) setFromScale((math.clamp(v, min, max) - min) / (max - min), not silent) end
@@ -850,7 +903,7 @@ function Section:AddDropdown(opts)
 		Position = UDim2.new(1, -14, 0.5, -5), ZIndex = 15, Parent = bar,
 	})
 
-	local listWrap = bordered({ Fill = Theme.OuterFill, Border = Theme.OuterBorder, ZIndex = 60 })
+	local listWrap = bordered({ Fill = Theme.OuterFill, Border = Theme.OuterBorder, ZIndex = 205 })
 	listWrap.Root.Size = UDim2.new(1, -10, 0, 0)
 	listWrap.Root.Position = UDim2.new(0, 5, 0, 38)
 	listWrap.Root.Visible = false
@@ -859,7 +912,7 @@ function Section:AddDropdown(opts)
 
 	local listCol = create("Frame", {
 		BackgroundTransparency = 1, Size = UDim2.new(1, -4, 1, -4),
-		Position = UDim2.new(0, 2, 0, 2), ZIndex = 61, Parent = listWrap.Content,
+		Position = UDim2.new(0, 2, 0, 2), ZIndex = 206, Parent = listWrap.Content,
 	}, {
 		create("UIListLayout", { Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder }),
 	})
@@ -884,13 +937,21 @@ function Section:AddDropdown(opts)
 
 	local open = false
 	local function setOpen(o)
+		if o == open then return end
 		open = o
-		listWrap.Root.Visible = o
 		tween(arrow, 0.15, { Rotation = o and 180 or 0 })
 		local h = o and (#options * 18 + 4) or 0
 		row.Wrap.ZIndex = o and 200 or 11
 		row.Wrap.Size = UDim2.new(1, 0, 0, o and (40 + h + 4) or 40)
-		tween(listWrap.Root, 0.15, { Size = UDim2.new(1, -10, 0, h) })
+		if o then
+			listWrap.Root.Visible = true
+			tween(listWrap.Root, 0.15, { Size = UDim2.new(1, -10, 0, h) })
+		else
+			local t = tween(listWrap.Root, 0.12, { Size = UDim2.new(1, -10, 0, 0) })
+			t.Completed:Connect(function()
+				if not open then listWrap.Root.Visible = false end
+			end)
+		end
 	end
 
 	local function rebuild()
@@ -902,7 +963,7 @@ function Section:AddDropdown(opts)
 				BorderSizePixel = 0, AutoButtonColor = false, Text = tostring(opt),
 				FontFace = Theme.Font, TextSize = Theme.TextSize,
 				TextColor3 = isSelected(opt) and Theme.TextBright or Theme.Text,
-				Size = UDim2.new(1, 0, 0, 16), ZIndex = 62,
+				Size = UDim2.new(1, 0, 0, 16), ZIndex = 207,
 				LayoutOrder = i, Parent = listCol,
 			}, { corner() })
 			b.MouseButton1Click:Connect(function()
@@ -919,6 +980,19 @@ function Section:AddDropdown(opts)
 	end
 
 	bar.MouseButton1Click:Connect(function() setOpen(not open) end)
+
+	UserInputService.InputBegan:Connect(function(input)
+		if not open then return end
+		if input.UserInputType ~= Enum.UserInputType.MouseButton1
+		and input.UserInputType ~= Enum.UserInputType.Touch then return end
+		local inset = GuiService:GetGuiInset()
+		local m = UserInputService:GetMouseLocation() + inset
+		local pos, sz = row.Wrap.AbsolutePosition, row.Wrap.AbsoluteSize
+		if m.X < pos.X or m.X > pos.X + sz.X or m.Y < pos.Y or m.Y > pos.Y + sz.Y then
+			setOpen(false)
+		end
+	end)
+
 	rebuild()
 
 	function api:Set(v, silent) selected = v; refresh(not silent) end
