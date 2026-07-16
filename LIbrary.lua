@@ -26,8 +26,9 @@ local Theme = {
 	InnerHover    = Color3.fromRGB(46, 46, 46),
 
 	SectionOuterB = Color3.fromRGB(26, 26, 26),
-	Section       = Color3.fromRGB(26, 26, 26),
-	SectionBorder = Color3.fromRGB(51, 51, 51),
+	Section       = Color3.fromRGB(21, 21, 21),
+	SectionBorder = Color3.fromRGB(48, 48, 48),
+	PageBorder    = Color3.fromRGB(41, 41, 41),
 	Divider       = Color3.fromRGB(151, 151, 151),
 
 	Text          = Color3.fromRGB(201, 201, 201),
@@ -38,13 +39,37 @@ local Theme = {
 	Black         = Color3.fromRGB(0, 0, 0),
 
 	Font          = Font.new("rbxasset://fonts/families/Ubuntu.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal),
-	TextSize      = 10,
-	TitleSize     = 15,
-	SectionSize   = 15,
+	TextSize      = 11,
+	TitleSize     = 14,
+	SectionSize   = 13,
 
 	CornerElement = UDim.new(0, 5),
 	CornerMenu    = UDim.new(0, 10),
-	CornerSmall   = UDim.new(0, 3),
+	CornerSmall   = UDim.new(0, 4),
+}
+
+-- Central spacing grid. Every gap/padding/height in the library references this
+-- table so the whole UI stays on one rhythm and can be retuned from one place.
+local Layout = {
+	RowH        = 24,   -- default control row height
+	SliderH     = 34,   -- slider row (label + track)
+	DropH       = 42,   -- dropdown bar row (label + closed bar)
+	Gap         = 6,    -- gap between elements inside a section
+	Pad         = 7,    -- section inner horizontal padding
+	PadTop      = 27,   -- first element offset (below title + divider)
+	SectionGap  = 7,    -- gap between stacked sections
+	ColGap      = 7,    -- gap between columns
+	PagePad     = 6,    -- inset inside the page panel
+	TitleH      = 21,   -- section title band height
+	SideW       = 35,   -- sidebar width
+}
+
+-- Tween durations. Kept short so the interface reads as instant; hover/press
+-- micro-interactions use Fast, state changes use Base, settles use Slow.
+local Anim = {
+	Fast = 0.08,
+	Base = 0.12,
+	Slow = 0.16,
 }
 
 local Icons = {
@@ -107,11 +132,11 @@ local function pressBounce(inst, downScale)
 		ui.Scale = 1
 		ui.Parent = inst
 	end
-	downScale = downScale or 0.9
-	tween(ui, 0.08, { Scale = downScale }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-	task.delay(0.08, function()
+	downScale = downScale or 0.92
+	tween(ui, Anim.Fast, { Scale = downScale }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	task.delay(Anim.Fast, function()
 		if ui.Parent then
-			tween(ui, 0.35, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+			tween(ui, 0.22, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 		end
 	end)
 end
@@ -134,11 +159,11 @@ local function hoverLift(inst, amount)
 	end
 	inst.MouseEnter:Connect(function()
 		local p = inst.Position
-		tween(inst, 0.15, { Position = UDim2.new(p.X.Scale, p.X.Offset, p.Y.Scale, baseY() - amount) })
+		tween(inst, Anim.Fast, { Position = UDim2.new(p.X.Scale, p.X.Offset, p.Y.Scale, baseY() - amount) })
 	end)
 	inst.MouseLeave:Connect(function()
 		local p = inst.Position
-		tween(inst, 0.2, { Position = UDim2.new(p.X.Scale, p.X.Offset, p.Y.Scale, baseY()) })
+		tween(inst, Anim.Base, { Position = UDim2.new(p.X.Scale, p.X.Offset, p.Y.Scale, baseY()) })
 	end)
 end
 
@@ -372,6 +397,153 @@ function ProGui:Notify(opts)
 	end)
 end
 
+-- ---------------------------------------------------------------------------
+-- Context menu
+--
+-- A single reusable right-click popup lives per-window. Callers describe menu
+-- entries as plain data (a list of { Label, Icon?, Callback?, Divider? }) so new
+-- actions are added by pushing another table entry — no bespoke UI code. Entries
+-- can be given as a static list or a function returning one (evaluated per open,
+-- so menus can reflect current state). Nil/false entries are skipped, letting
+-- callers conditionally include actions inline.
+-- ---------------------------------------------------------------------------
+
+local CONTEXT_W = 150
+local CONTEXT_ITEM_H = 22
+
+local function resolveContextItems(items, ...)
+	if type(items) == "function" then items = items(...) end
+	local out = {}
+	for _, it in ipairs(items or {}) do
+		if it then table.insert(out, it) end
+	end
+	return out
+end
+
+function ProGui:_initContextMenu(screen)
+	-- Full-screen catcher: one transparent button under the popup closes it on
+	-- any outside click without each menu wiring its own global input listener.
+	local holder = create("TextButton", {
+		Name = "ContextLayer", Text = "", AutoButtonColor = false,
+		BackgroundTransparency = 1, Visible = false,
+		Size = UDim2.new(1, 0, 1, 0), ZIndex = 600, Parent = screen,
+	})
+	local panel = bordered({ Fill = Theme.Topbar, Border = Theme.TopbarBorder, ZIndex = 602 })
+	panel.Root.Size = UDim2.new(0, CONTEXT_W, 0, 0)
+	panel.Root.AutomaticSize = Enum.AutomaticSize.Y
+	panel.Root.Visible = false
+	panel.Root.Parent = holder
+	outline(panel.Content, 601)
+
+	local list = create("Frame", {
+		Name = "Items", BackgroundTransparency = 1,
+		Size = UDim2.new(1, -6, 0, 0), Position = UDim2.new(0, 3, 0, 3),
+		AutomaticSize = Enum.AutomaticSize.Y, ZIndex = 603, Parent = panel.Content,
+	}, {
+		create("UIListLayout", { Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder }),
+	})
+
+	self._context = { Holder = holder, Panel = panel.Root, List = list }
+	holder.MouseButton1Click:Connect(function() self:_hideContextMenu() end)
+	holder.MouseButton2Click:Connect(function() self:_hideContextMenu() end)
+end
+
+function ProGui:_hideContextMenu()
+	local ctx = self._context
+	if not ctx then return end
+	ctx.Holder.Visible = false
+	ctx.Panel.Visible = false
+end
+
+-- Opens the shared popup at (x, y) built from `items`. Anchors so the menu never
+-- spills off the right/bottom edge of the screen.
+function ProGui:_showContextMenu(items, x, y)
+	local ctx = self._context
+	if not ctx then return end
+	for _, c in ipairs(ctx.List:GetChildren()) do
+		if not c:IsA("UIListLayout") then c:Destroy() end
+	end
+
+	local order = 0
+	local count = 0
+	for _, item in ipairs(items) do
+		order += 1
+		if item.Divider then
+			create("Frame", {
+				Name = "Divider", BorderSizePixel = 0, BackgroundColor3 = Theme.TopbarBorder,
+				Size = UDim2.new(1, -8, 0, 1), Position = UDim2.new(0, 4, 0, 0),
+				LayoutOrder = order, ZIndex = 603, Parent = ctx.List,
+			})
+		else
+			count += 1
+			local entry = create("TextButton", {
+				Name = "Item", AutoButtonColor = false, BackgroundColor3 = Theme.Topbar,
+				BackgroundTransparency = 1, BorderSizePixel = 0, Text = "",
+				Size = UDim2.new(1, 0, 0, CONTEXT_ITEM_H), LayoutOrder = order,
+				ZIndex = 603, Parent = ctx.List,
+			}, { corner(Theme.CornerSmall) })
+
+			local hasIcon = item.Icon and item.Icon ~= ""
+			if hasIcon then
+				create("ImageLabel", {
+					BackgroundTransparency = 1, Image = item.Icon, ImageColor3 = Theme.TextDim,
+					Size = UDim2.new(0, 12, 0, 12), Position = UDim2.new(0, 7, 0.5, -6),
+					ZIndex = 604, Parent = entry,
+				})
+			end
+			label({
+				Parent = entry, Text = tostring(item.Label or "Action"),
+				Color = item.Color or Theme.Text, ZIndex = 604,
+				Position = UDim2.new(0, hasIcon and 24 or 9, 0, 0), Size = UDim2.new(1, hasIcon and -28 or -13, 1, 0),
+			})
+
+			entry.MouseEnter:Connect(function()
+				tween(entry, Anim.Fast, { BackgroundTransparency = 0 })
+			end)
+			entry.MouseLeave:Connect(function()
+				tween(entry, Anim.Fast, { BackgroundTransparency = 1 })
+			end)
+			entry.MouseButton1Click:Connect(function()
+				self:_hideContextMenu()
+				if item.Callback then task.spawn(item.Callback) end
+			end)
+		end
+	end
+
+	if count == 0 then return end
+
+	-- Clamp to screen so the popup is always fully visible.
+	local screenSize = ctx.Holder.AbsoluteSize
+	local estH = count * CONTEXT_ITEM_H + (order - 1) * 2 + 6
+	if x + CONTEXT_W > screenSize.X then x = screenSize.X - CONTEXT_W - 4 end
+	if y + estH > screenSize.Y then y = math.max(4, screenSize.Y - estH - 4) end
+
+	ctx.Panel.Position = UDim2.new(0, x, 0, y)
+	ctx.Holder.Visible = true
+	ctx.Panel.Visible = true
+
+	-- Grow-in from the anchor for a light, quick reveal.
+	local scale = ctx.Panel:FindFirstChildOfClass("UIScale") or create("UIScale", { Parent = ctx.Panel })
+	ctx.Panel.AnchorPoint = Vector2.new(0, 0)
+	scale.Scale = 0.9
+	tween(scale, Anim.Base, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+end
+
+-- Wires right-click on `inst` to open the shared menu. `itemsProvider` is the
+-- data list (or a function returning one) described in the section comment.
+function ProGui:_attachContextMenu(inst, itemsProvider)
+	-- InputBegan (not MouseButton2Click) so this works on any GuiObject, not just
+	-- GuiButtons — callers can attach a menu to a plain Frame's .Instance.
+	inst.InputBegan:Connect(function(input)
+		if input.UserInputType ~= Enum.UserInputType.MouseButton2 then return end
+		local items = resolveContextItems(itemsProvider)
+		if #items == 0 then return end
+		local inset = GuiService:GetGuiInset()
+		local m = UserInputService:GetMouseLocation() + inset
+		self:_showContextMenu(items, m.X, m.Y)
+	end)
+end
+
 local Window = {}
 Window.__index = Window
 
@@ -379,6 +551,7 @@ function ProGui:CreateWindow(opts)
 	opts = opts or {}
 	local screen = mountScreenGui(opts.Name or "ProGui")
 	self:_initNotifications(screen)
+	self:_initContextMenu(screen)
 
 	local content = create("Frame", {
 		Name = "Content",
@@ -421,51 +594,62 @@ function ProGui:CreateWindow(opts)
 	})
 	label({
 		Parent = topWrap.Content, Text = opts.Subtitle or "",
-		Color = Theme.Text, XAlign = Enum.TextXAlignment.Right, ZIndex = 6,
+		Color = Theme.TextDim, XAlign = Enum.TextXAlignment.Right, ZIndex = 6,
 		Position = UDim2.new(0.5, 0, 0, 0), Size = UDim2.new(0.5, -29, 1, 0),
 	})
 
-	local eyeRest = UDim2.new(1, -19, 0.5, -7)
-	local eyeHover = UDim2.new(1, -19, 0.5, -10)
+	-- The eye keeps a fixed anchored position; the hover is a pure scale+colour
+	-- pulse via a dedicated UIScale, so it never drifts off its resting spot.
 	local eyeBtn = create("ImageButton", {
 		Name = "Toggle", BackgroundTransparency = 1,
 		Image = opts.EyeIcon or Icons.Eye,
-		ImageColor3 = Theme.Text,
-		Size = UDim2.new(0, 15, 0, 15), Position = eyeRest,
+		ImageColor3 = Theme.TextDim,
+		AnchorPoint = Vector2.new(1, 0.5),
+		Size = UDim2.new(0, 15, 0, 15), Position = UDim2.new(1, -6, 0.5, 0),
 		ZIndex = 6, Parent = topWrap.Content,
-	})
+	}, { create("UIScale", { Scale = 1 }) })
+	local eyeScale = eyeBtn:FindFirstChildOfClass("UIScale")
 	eyeBtn.MouseEnter:Connect(function()
-		tween(eyeBtn, 0.15, { ImageColor3 = Theme.TextBright, Position = eyeHover })
+		tween(eyeBtn, Anim.Fast, { ImageColor3 = Theme.TextBright })
+		tween(eyeScale, Anim.Fast, { Scale = 1.15 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 	end)
 	eyeBtn.MouseLeave:Connect(function()
-		tween(eyeBtn, 0.2, { ImageColor3 = Theme.TextDim, Position = eyeRest })
+		tween(eyeBtn, Anim.Base, { ImageColor3 = Theme.TextDim })
+		tween(eyeScale, Anim.Base, { Scale = 1 }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 	end)
-	eyeBtn.MouseButton1Down:Connect(function() pressBounce(eyeBtn) end)
+	eyeBtn.MouseButton1Down:Connect(function()
+		tween(eyeScale, Anim.Fast, { Scale = 0.85 }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	end)
+	eyeBtn.MouseButton1Up:Connect(function()
+		tween(eyeScale, Anim.Base, { Scale = 1.15 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+	end)
 
 	local sideWrap = bordered({ Fill = Theme.Topbar, Border = Theme.TopbarBorder, ZIndex = 5 })
-	sideWrap.Root.Size = UDim2.new(0, 35, 1, -40)
+	sideWrap.Root.Size = UDim2.new(0, Layout.SideW, 1, -40)
 	sideWrap.Root.Position = UDim2.new(0, 5, 0, 35)
 	sideWrap.Root.Parent = menu
 
 	local tabList = create("Frame", {
-		BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, -40),
-		Position = UDim2.new(0, 0, 0, 5), ZIndex = 6, Parent = sideWrap.Content,
+		BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, -38),
+		Position = UDim2.new(0, 0, 0, 7), ZIndex = 6, Parent = sideWrap.Content,
 	}, {
 		create("UIListLayout", {
-			Padding = UDim.new(0, 5),
+			Padding = UDim.new(0, 7),
 			HorizontalAlignment = Enum.HorizontalAlignment.Center,
 			SortOrder = Enum.SortOrder.LayoutOrder,
 		}),
 	})
 
+	-- Bottom tab group sits above the sidebar floor with a little breathing room
+	-- so the settings icon reads as vertically centred in its band, not dropped.
 	local bottomList = create("Frame", {
-		BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 30),
-		Position = UDim2.new(0, 0, 1, -30), ZIndex = 6, Parent = sideWrap.Content,
+		BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 28),
+		Position = UDim2.new(0, 0, 1, -33), ZIndex = 6, Parent = sideWrap.Content,
 	}, {
 		create("UIListLayout", {
-			Padding = UDim.new(0, 5),
+			Padding = UDim.new(0, 7),
 			HorizontalAlignment = Enum.HorizontalAlignment.Center,
-			VerticalAlignment = Enum.VerticalAlignment.Bottom,
+			VerticalAlignment = Enum.VerticalAlignment.Center,
 			SortOrder = Enum.SortOrder.LayoutOrder,
 		}),
 	})
@@ -474,7 +658,7 @@ function ProGui:CreateWindow(opts)
 	create("Frame", {
 		Name = "Divider", ZIndex = 7, BorderSizePixel = 0,
 		BackgroundColor3 = Theme.TextDim,
-		Size = UDim2.new(1, 0, 0, 1), Position = UDim2.new(0, 0, 1, -30),
+		Size = UDim2.new(1, 0, 0, 1), Position = UDim2.new(0, 0, 1, -37),
 		Parent = sideWrap.Content,
 	}, {
 		create("UIGradient", {
@@ -486,7 +670,7 @@ function ProGui:CreateWindow(opts)
 		}),
 	})
 
-	local pageWrap = bordered({ Fill = Theme.OuterFill, Border = Color3.fromRGB(41, 41, 41), ZIndex = 5 })
+	local pageWrap = bordered({ Fill = Theme.OuterFill, Border = Theme.PageBorder, ZIndex = 5 })
 	pageWrap.Root.Size = UDim2.new(1, -50, 1, -40)
 	pageWrap.Root.Position = UDim2.new(0, 45, 0, 35)
 	pageWrap.Root.Parent = menu
@@ -534,6 +718,22 @@ end
 
 function Window:SetToggleKey(key)
 	self._toggleKey = key
+end
+
+-- Public, fully data-driven context-menu hook. Pass any GuiButton and a list
+-- (or a function returning one) of { Label, Icon?, Callback?, Color?, Divider? }
+-- entries; right-clicking the element opens the shared themed popup. New actions
+-- are added by appending table entries — no UI code required.
+function Window:AttachContextMenu(inst, items)
+	self.Lib:_attachContextMenu(inst, items)
+end
+
+-- Opens a context menu programmatically at the current mouse position.
+function Window:ShowContextMenu(items)
+	local resolved = resolveContextItems(items)
+	if #resolved == 0 then return end
+	local m = UserInputService:GetMouseLocation() + GuiService:GetGuiInset()
+	self.Lib:_showContextMenu(resolved, m.X, m.Y)
 end
 
 function Window:Notify(opts)
@@ -590,9 +790,10 @@ function Window:AddTab(opts)
 		CanvasSize = UDim2.new(0, 0, 0, 0),
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		ScrollBarThickness = 3,
-		ScrollBarImageColor3 = Theme.TopbarBorder,
+		ScrollBarImageColor3 = Theme.Accent, ScrollBarImageTransparency = 0.35,
 		Visible = false, ZIndex = 5, Parent = self.PageHolder,
 	})
+	self.Lib:_bindAccent(page, "ScrollBarImageColor3")
 
 	local columns = create("Frame", {
 		Name = "Columns", BackgroundTransparency = 1,
@@ -602,19 +803,22 @@ function Window:AddTab(opts)
 
 	local colCount = opts.Columns or 2
 	local colFrames = {}
-	local colLayout = create("UIListLayout", {
+	create("UIListLayout", {
 		FillDirection = Enum.FillDirection.Horizontal,
-		Padding = UDim.new(0, 6),
+		Padding = UDim.new(0, Layout.ColGap),
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		Parent = columns,
 	})
+	-- Each column takes an equal share of the row minus the inter-column gaps,
+	-- so two columns always leave exactly one ColGap of breathing room between.
+	local colOffset = -Layout.ColGap * (colCount - 1) / colCount
 	for i = 1, colCount do
 		local col = create("Frame", {
 			Name = "Column" .. i, BackgroundTransparency = 1,
-			Size = UDim2.new(1 / colCount, -6 + (6 / colCount), 0, 0),
+			Size = UDim2.new(1 / colCount, colOffset, 0, 0),
 			AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = i, ZIndex = 5, Parent = columns,
 		}, {
-			create("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }),
+			create("UIListLayout", { Padding = UDim.new(0, Layout.SectionGap), SortOrder = Enum.SortOrder.LayoutOrder }),
 		})
 		colFrames[i] = col
 	end
@@ -623,7 +827,10 @@ function Window:AddTab(opts)
 		Window = self, Lib = self.Lib,
 		Button = btn, Frame = tabFrame, Letter = letter, Page = page,
 		Columns = colFrames, _nextCol = 1, Name = opts.Name,
+		_bottom = opts.Bottom or false, _pinned = false, _bindKey = nil,
+		_baseOrder = #(parentList:GetChildren()), _extraContext = {},
 	}, Tab)
+	tabFrame.LayoutOrder = tabObj._baseOrder
 
 	local function select()
 		if self._activeTab == tabObj then return end
@@ -631,33 +838,106 @@ function Window:AddTab(opts)
 			local prev = self._activeTab
 			prev._active = false
 			prev.Page.Visible = false
-			tween(prev.Button, 0.15, { ImageColor3 = Theme.TabInactive })
-			if prev.Letter then tween(prev.Letter, 0.15, { TextColor3 = Theme.TabInactive }) end
+			tween(prev.Button, Anim.Base, { ImageColor3 = Theme.TabInactive })
+			if prev.Letter then tween(prev.Letter, Anim.Base, { TextColor3 = Theme.TabInactive }) end
 		end
 		self._activeTab = tabObj
 		tabObj._active = true
 		page.Visible = true
-		tween(btn, 0.18, { ImageColor3 = Theme.TabActive })
-		if letter then tween(letter, 0.18, { TextColor3 = Theme.TabActive }) end
+		tween(btn, Anim.Base, { ImageColor3 = Theme.TabActive })
+		if letter then tween(letter, Anim.Base, { TextColor3 = Theme.TabActive }) end
 	end
 
 	-- Hover: idle tabs ease gently from gray toward the active tone, back on leave.
 	btn.MouseEnter:Connect(function()
 		if tabObj._active then return end
-		tween(btn, 0.2, { ImageColor3 = Theme.Text })
-		if letter then tween(letter, 0.2, { TextColor3 = Theme.Text }) end
+		tween(btn, Anim.Slow, { ImageColor3 = Theme.Text })
+		if letter then tween(letter, Anim.Slow, { TextColor3 = Theme.Text }) end
 	end)
 	btn.MouseLeave:Connect(function()
 		if tabObj._active then return end
-		tween(btn, 0.25, { ImageColor3 = Theme.TabInactive })
-		if letter then tween(letter, 0.25, { TextColor3 = Theme.TabInactive }) end
+		tween(btn, Anim.Slow, { ImageColor3 = Theme.TabInactive })
+		if letter then tween(letter, Anim.Slow, { TextColor3 = Theme.TabInactive }) end
 	end)
 
 	btn.MouseButton1Click:Connect(function()
-		pressBounce(btn, 0.9)
+		pressBounce(btn, 0.92)
 		select()
 	end)
 	tabObj.Select = select
+
+	-- Small pin dot in the corner, shown only while the tab is pinned. Pinning
+	-- floats the tab to the top of its group via LayoutOrder.
+	local pinDot = create("Frame", {
+		Name = "Pin", BackgroundColor3 = Theme.TextBright, BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(1, 0), Size = UDim2.new(0, 4, 0, 4),
+		Position = UDim2.new(1, -2, 0, 1), ZIndex = 11, Visible = false, Parent = tabFrame,
+	}, { corner(UDim.new(1, 0)) })
+	self.Lib:_bindAccent(pinDot, "BackgroundColor3")
+
+	function tabObj:SetPinned(v)
+		self._pinned = v and true or false
+		pinDot.Visible = self._pinned
+		tabFrame.LayoutOrder = self._pinned and -1000 + self._baseOrder or self._baseOrder
+	end
+
+	-- Right-click actions. The first four are built-in; anything registered via
+	-- tab:AddContextAction(...) is appended, so callers extend the menu with data.
+	local function contextItems()
+		local items = {
+			{
+				Label = tabObj._pinned and "Unpin tab" or "Pin tab", Icon = Icons.Pin,
+				Callback = function() tabObj:SetPinned(not tabObj._pinned) end,
+			},
+			{
+				Label = "Add keybind", Icon = Icons.Gear,
+				Callback = function() tabObj:_listenBind() end,
+			},
+			{
+				Label = "Copy identifier",
+				Callback = function()
+					local id = tostring(tabObj.Name or "tab")
+					if setclipboard then pcall(setclipboard, id) end
+					self:Notify({ Title = "Copied", Text = id })
+				end,
+			},
+			{ Divider = true },
+			{ Label = "Select tab", Callback = select },
+		}
+		for _, extra in ipairs(tabObj._extraContext) do
+			table.insert(items, extra)
+		end
+		return items
+	end
+	self.Lib:_attachContextMenu(btn, contextItems)
+
+	-- Optional per-tab keybind that selects the tab (and shows the window if
+	-- hidden). Listens for the next key press after "Add keybind" is chosen.
+	function tabObj:_listenBind()
+		self._listening = true
+		self.Window:Notify({ Title = "Keybind", Text = "Press a key for " .. tostring(self.Name) })
+	end
+	UserInputService.InputBegan:Connect(function(input, gpe)
+		if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+		if tabObj._listening then
+			tabObj._listening = false
+			if input.KeyCode == Enum.KeyCode.Escape then
+				tabObj._bindKey = nil
+			else
+				tabObj._bindKey = input.KeyCode
+				self:Notify({ Title = "Keybind", Text = tostring(input.KeyCode.Name) .. " → " .. tostring(tabObj.Name) })
+			end
+		elseif not gpe and tabObj._bindKey and input.KeyCode == tabObj._bindKey then
+			if not self._visible then self:Toggle() end
+			select()
+		end
+	end)
+
+	-- Data-driven extension point: push another entry onto the tab's menu.
+	function tabObj:AddContextAction(item)
+		table.insert(self._extraContext, item)
+	end
+
 	table.insert(self.Tabs, tabObj)
 	if not self._activeTab and not opts.Bottom then select() end
 	return tabObj
@@ -673,43 +953,34 @@ function Tab:AddSection(opts)
 		self._nextCol = (self._nextCol % #self.Columns) + 1
 	end
 
-	-- Source sections carry a two-tone border: a 51,51,51 ring hugging the
-	-- 26,26,26 panel, wrapped again by a 26,26,26 ring. Both rings are scale
-	-- sized so they're ignored by the panel's AutomaticSize growth.
+	-- One crisp border ring (a single UIStroke) keeps every corner perfectly
+	-- merged and the outline uniformly visible at any size — the old stacked
+	-- border frames drifted at the corners because their radius didn't scale.
 	local root = create("Frame", {
 		Name = "Section", BackgroundColor3 = Theme.Section, BorderSizePixel = 0,
 		Size = UDim2.new(1, 0, 0, 34), AutomaticSize = Enum.AutomaticSize.Y,
 		ZIndex = 9, Parent = col,
-	}, { corner() })
-
-	create("Frame", {
-		Name = "Border", BackgroundColor3 = Theme.SectionBorder, BorderSizePixel = 0,
-		Size = UDim2.new(1, 2, 1, 2), Position = UDim2.new(0, -1, 0, -1),
-		ZIndex = 8, Parent = root,
-	}, { corner() })
-
-	create("Frame", {
-		Name = "BorderOuter", BackgroundColor3 = Theme.SectionOuterB, BorderSizePixel = 0,
-		Size = UDim2.new(1, 4, 1, 4), Position = UDim2.new(0, -2, 0, -2),
-		ZIndex = 7, Parent = root,
-	}, { corner() })
+	}, {
+		corner(),
+		create("UIStroke", { Thickness = 1, Color = Theme.SectionBorder, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }),
+	})
 
 	label({
 		Parent = root, Text = opts.Name or "Section",
 		Color = Theme.Text, TextSize = Theme.SectionSize, ZIndex = 10,
 		XAlign = Enum.TextXAlignment.Center,
-		Position = UDim2.new(0, 0, 0, 0), Size = UDim2.new(1, 0, 0, 20),
+		Position = UDim2.new(0, 0, 0, 0), Size = UDim2.new(1, 0, 0, Layout.TitleH),
 	})
 
 	create("Frame", {
 		Name = "Divider", BorderSizePixel = 0, BackgroundColor3 = Theme.Divider,
-		Size = UDim2.new(1, 0, 0, 1), Position = UDim2.new(0, 0, 0, 20),
+		Size = UDim2.new(1, -2, 0, 1), Position = UDim2.new(0, 1, 0, Layout.TitleH),
 		ZIndex = 10, Parent = root,
 	}, {
 		create("UIGradient", {
 			Transparency = NumberSequence.new({
 				NumberSequenceKeypoint.new(0, 1),
-				NumberSequenceKeypoint.new(0.5, 0.65),
+				NumberSequenceKeypoint.new(0.5, 0.6),
 				NumberSequenceKeypoint.new(1, 1),
 			}),
 		}),
@@ -717,21 +988,21 @@ function Tab:AddSection(opts)
 
 	local elements = create("Frame", {
 		Name = "Elements", BackgroundTransparency = 1,
-		Size = UDim2.new(1, -10, 0, 0), Position = UDim2.new(0, 5, 0, 25),
+		Size = UDim2.new(1, -Layout.Pad * 2, 0, 0), Position = UDim2.new(0, Layout.Pad, 0, Layout.PadTop),
 		AutomaticSize = Enum.AutomaticSize.Y, ZIndex = 10, Parent = root,
 	}, {
-		create("UIListLayout", { Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder }),
-		create("UIPadding", { PaddingBottom = UDim.new(0, 8) }),
+		create("UIListLayout", { Padding = UDim.new(0, Layout.Gap), SortOrder = Enum.SortOrder.LayoutOrder }),
+		create("UIPadding", { PaddingBottom = UDim.new(0, Layout.Pad + 1) }),
 	})
 
 	return setmetatable({
-		Tab = self, Lib = self.Lib, Root = root, Holder = elements,
+		Tab = self, Lib = self.Lib, Root = root, Holder = elements, Name = opts.Name,
 	}, Section)
 end
 
 function Section:_row(height)
 	local outer = bordered({ Fill = Theme.OuterFill, Border = Theme.OuterBorder, ZIndex = 11 })
-	outer.Root.Size = UDim2.new(1, 0, 0, height or 20)
+	outer.Root.Size = UDim2.new(1, 0, 0, height or Layout.RowH)
 	outer.Root.Parent = self.Holder
 
 	local inner = bordered({ Fill = Theme.InnerFill, Border = Theme.InnerBorder, ZIndex = 13 })
@@ -748,20 +1019,20 @@ end
 
 function Section:AddLabel(opts)
 	opts = opts or {}
-	local row = self:_row(opts.Height or 20)
+	local row = self:_row(opts.Height or Layout.RowH)
 	local txt = label({
 		Parent = row.Content, Text = opts.Text or "Label",
 		Color = opts.Color or Theme.Text, ZIndex = 14,
 		XAlign = opts.Center and Enum.TextXAlignment.Center or Enum.TextXAlignment.Left,
-		Position = UDim2.new(0, 6, 0, opts.Wrap and 4 or 0),
-		Size = UDim2.new(1, -12, opts.Wrap and 0 or 1, 0),
+		Position = UDim2.new(0, 8, 0, opts.Wrap and 5 or 0),
+		Size = UDim2.new(1, -16, opts.Wrap and 0 or 1, 0),
 	})
 	if opts.Wrap then
 		txt.TextWrapped = true
 		txt.TextYAlignment = Enum.TextYAlignment.Top
 		txt.AutomaticSize = Enum.AutomaticSize.Y
 		local function resize()
-			row.Wrap.Size = UDim2.new(1, 0, 0, txt.AbsoluteSize.Y + 8)
+			row.Wrap.Size = UDim2.new(1, 0, 0, txt.AbsoluteSize.Y + 10)
 		end
 		txt:GetPropertyChangedSignal("AbsoluteSize"):Connect(resize)
 		task.defer(resize)
@@ -774,17 +1045,18 @@ end
 
 function Section:AddButton(opts)
 	opts = opts or {}
-	local row = self:_row(20)
+	local row = self:_row(Layout.RowH)
 	label({
 		Parent = row.Content, Text = opts.Name or "Button",
-		ZIndex = 14, Position = UDim2.new(0, 6, 0, 0), Size = UDim2.new(1, -42, 1, 0),
+		ZIndex = 14, Position = UDim2.new(0, 8, 0, 0), Size = UDim2.new(1, -46, 1, 0),
 	})
 
 	local box = create("ImageButton", {
 		Name = "Button", AutoButtonColor = false, ScaleType = Enum.ScaleType.Fit,
 		Image = Icons.Cursor, ImageColor3 = Theme.TextBright,
 		BorderSizePixel = 0,
-		Size = UDim2.new(0, 30, 0, 14), Position = UDim2.new(1, -34, 0.5, -7),
+		Size = UDim2.new(0, 32, 0, 15), Position = UDim2.new(1, -40, 0.5, 0),
+		AnchorPoint = Vector2.new(0, 0.5),
 		ZIndex = 15, Parent = row.Content,
 	}, { corner(Theme.CornerSmall) })
 	self.Lib:_bindAccent(box, "BackgroundColor3")
@@ -792,8 +1064,8 @@ function Section:AddButton(opts)
 
 	local function fire()
 		pressBounce(box)
-		tween(box, 0.08, { BackgroundColor3 = Theme.AccentHover })
-		task.delay(0.12, function() tween(box, 0.12, { BackgroundColor3 = Theme.Accent }) end)
+		tween(box, Anim.Fast, { BackgroundColor3 = Theme.AccentHover })
+		task.delay(Anim.Base, function() tween(box, Anim.Base, { BackgroundColor3 = Theme.Accent }) end)
 		if opts.Callback then task.spawn(opts.Callback) end
 	end
 	box.MouseButton1Click:Connect(fire)
@@ -803,12 +1075,12 @@ end
 function Section:AddToggle(opts)
 	opts = opts or {}
 	local state = opts.Default or false
-	local row = self:_row(20)
+	local row = self:_row(Layout.RowH)
 	registerFlag(self.Lib, opts.Flag, state)
 
 	label({
 		Parent = row.Content, Text = opts.Name or "Toggle",
-		ZIndex = 14, Position = UDim2.new(0, 6, 0, 0), Size = UDim2.new(1, -42, 1, 0),
+		ZIndex = 14, Position = UDim2.new(0, 8, 0, 0), Size = UDim2.new(1, -46, 1, 0),
 	})
 
 	local locked = opts.Locked or false
@@ -816,7 +1088,8 @@ function Section:AddToggle(opts)
 	local pill = create("ImageButton", {
 		Name = "Toggle", AutoButtonColor = false, ImageTransparency = 1,
 		BackgroundColor3 = state and Theme.Accent or Theme.AccentBg,
-		Size = UDim2.new(0, 30, 0, 14), Position = UDim2.new(1, -32, 0.5, -7),
+		AnchorPoint = Vector2.new(0, 0.5),
+		Size = UDim2.new(0, 30, 0, 14), Position = UDim2.new(1, -38, 0.5, 0),
 		ZIndex = 14, Parent = row.Content, BorderSizePixel = 0,
 	}, { corner(UDim.new(1, 0)) })
 	self.Lib:_bindAccent(pill, "BackgroundColor3", state and "accent" or "bg")
@@ -844,8 +1117,8 @@ function Section:AddToggle(opts)
 	end
 	local function apply(fire)
 		bindEntry()
-		tween(pill, 0.15, { BackgroundColor3 = state and Theme.Accent or Theme.AccentBg })
-		tween(dot, 0.15, {
+		tween(pill, Anim.Base, { BackgroundColor3 = state and Theme.Accent or Theme.AccentBg })
+		tween(dot, Anim.Base, {
 			Position = state and UDim2.new(1, -13, 0.5, -6) or UDim2.new(0, 1, 0.5, -6),
 			BackgroundColor3 = state and Theme.TextBright or Theme.TextDim,
 		})
@@ -870,6 +1143,7 @@ function Section:AddSlider(opts)
 	opts = opts or {}
 	local min = opts.Min or 0
 	local max = opts.Max or 100
+	if max <= min then max = min + 1 end -- guard against a zero-width range (NaN)
 	local value = math.clamp(opts.Default or min, min, max)
 	local decimals = opts.Decimals or 0
 	local suffix = opts.Suffix or ""
@@ -879,15 +1153,15 @@ function Section:AddSlider(opts)
 		return math.floor(v * m + 0.5) / m
 	end
 
-	local row = self:_row(32)
+	local row = self:_row(Layout.SliderH)
 	registerFlag(self.Lib, opts.Flag, value)
 
 	label({
 		Parent = row.Content, Text = opts.Name or "Slider",
-		ZIndex = 14, Position = UDim2.new(0, 6, 0, 2), Size = UDim2.new(1, -60, 0, 14),
+		ZIndex = 14, Position = UDim2.new(0, 8, 0, 3), Size = UDim2.new(1, -64, 0, 14),
 	})
 	local function fmt(v)
-		if decimals > 0 then return string.format("%.2f", v) end
+		if decimals > 0 then return string.format("%." .. decimals .. "f", v) end
 		return tostring(v)
 	end
 
@@ -898,38 +1172,39 @@ function Section:AddSlider(opts)
 		FontFace = Theme.Font, TextSize = Theme.TextSize, TextColor3 = Theme.TextDim,
 		TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 14,
 		Text = fmt(round(value)) .. suffix,
-		Position = UDim2.new(1, -56, 0, 2), Size = UDim2.new(0, 50, 0, 14),
+		Position = UDim2.new(1, -58, 0, 3), Size = UDim2.new(0, 50, 0, 14),
 		Parent = row.Content,
 	})
 
 	local track = create("Frame", {
 		Name = "Slider", BorderSizePixel = 0,
-		Size = UDim2.new(1, -12, 0, 5), Position = UDim2.new(0, 6, 1, -11),
+		AnchorPoint = Vector2.new(0, 0.5),
+		Size = UDim2.new(1, -16, 0, 6), Position = UDim2.new(0, 8, 1, -9),
 		ZIndex = 14, Parent = row.Content,
-	}, { corner(UDim.new(0, 3)) })
+	}, { corner(UDim.new(1, 0)) })
 	self.Lib:_bindAccent(track, "BackgroundColor3", "bg")
 
 	local fill = create("Frame", {
 		Name = "Fill", BorderSizePixel = 0,
 		Size = UDim2.new((value - min) / (max - min), 0, 1, 0),
 		ZIndex = 15, Parent = track,
-	}, { corner(UDim.new(0, 3)) })
+	}, { corner(UDim.new(1, 0)) })
 	self.Lib:_bindAccent(fill, "BackgroundColor3")
 
 	local handle = create("Frame", {
 		Name = "Handle", BackgroundColor3 = Theme.TextBright, BorderSizePixel = 0,
-		Size = UDim2.new(0, 7, 0, 7), AnchorPoint = Vector2.new(0.5, 0.5),
+		Size = UDim2.new(0, 10, 0, 10), AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new((value - min) / (max - min), 0, 0.5, 0),
 		ZIndex = 16, Parent = track,
-	}, { corner(UDim.new(0, 2)) })
+	}, { corner(UDim.new(1, 0)) })
 
 	local api = {}
 	local function setFromScale(scale, fire)
 		scale = math.clamp(scale, 0, 1)
 		value = round(min + (max - min) * scale)
 		local realScale = (value - min) / (max - min)
-		tween(fill, 0.06, { Size = UDim2.new(realScale, 0, 1, 0) })
-		tween(handle, 0.06, { Position = UDim2.new(realScale, 0, 0.5, 0) })
+		tween(fill, Anim.Fast, { Size = UDim2.new(realScale, 0, 1, 0) })
+		tween(handle, Anim.Fast, { Position = UDim2.new(realScale, 0, 0.5, 0) })
 		valBox.Text = fmt(value) .. suffix
 		registerFlag(self.Lib, opts.Flag, value)
 		if fire and opts.Callback then task.spawn(opts.Callback, value) end
@@ -947,11 +1222,13 @@ function Section:AddSlider(opts)
 	end)
 
 	local dragging = false
-	local function growHandle()
-		tween(handle, 0.12, { Size = UDim2.new(0, 11, 0, 11) }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-	end
-	local function shrinkHandle()
-		tween(handle, 0.18, { Size = UDim2.new(0, 7, 0, 7) })
+	-- Press feedback: the handle dips a couple of pixels smaller on grab, then
+	-- springs straight back to full size. A quick "give" instead of a swell.
+	local function pressPulse()
+		tween(handle, Anim.Fast, { Size = UDim2.new(0, 7, 0, 7) })
+		task.delay(Anim.Fast, function()
+			tween(handle, 0.18, { Size = UDim2.new(0, 10, 0, 10) }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+		end)
 	end
 	local function update(input)
 		local rel = (input.Position.X - track.AbsolutePosition.X) / track.AbsoluteSize.X
@@ -960,7 +1237,7 @@ function Section:AddSlider(opts)
 	track.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1
 		or input.UserInputType == Enum.UserInputType.Touch then
-			dragging = true; growHandle(); update(input)
+			dragging = true; pressPulse(); update(input)
 		end
 	end)
 	UserInputService.InputChanged:Connect(function(input)
@@ -970,7 +1247,7 @@ function Section:AddSlider(opts)
 	UserInputService.InputEnded:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1
 		or input.UserInputType == Enum.UserInputType.Touch then
-			if dragging then dragging = false; shrinkHandle() end
+			dragging = false
 		end
 	end)
 
@@ -986,7 +1263,7 @@ function Section:AddDropdown(opts)
 	local multi = opts.Multi or false
 	local selected = multi and (opts.Default or {}) or (opts.Default or options[1])
 
-	local row = self:_row(40)
+	local row = self:_row(Layout.DropH)
 
 	local function displayText()
 		if multi then
@@ -1001,40 +1278,53 @@ function Section:AddDropdown(opts)
 
 	label({
 		Parent = row.Content, Text = opts.Name or "Dropdown",
-		ZIndex = 14, Position = UDim2.new(0, 5, 0, 2), Size = UDim2.new(1, -10, 0, 16),
+		ZIndex = 14, Position = UDim2.new(0, 8, 0, 3), Size = UDim2.new(1, -16, 0, 15),
 	})
 
 	local bar = create("TextButton", {
 		Name = "Dropdown", AutoButtonColor = false, Text = "",
 		BackgroundColor3 = Theme.AccentDark, BorderSizePixel = 0,
-		Size = UDim2.new(1, -10, 0, 15), Position = UDim2.new(0, 5, 0, 22),
+		Size = UDim2.new(1, -16, 0, 16), Position = UDim2.new(0, 8, 0, 24),
 		ZIndex = 14, Parent = row.Content,
 	}, { corner(Theme.CornerSmall) })
 	self.Lib:_bindAccent(bar, "BackgroundColor3", "dark")
 
 	local valLabel = label({
 		Parent = bar, Text = displayText(), Color = Theme.Text, ZIndex = 15,
-		Position = UDim2.new(0, 6, 0, 0), Size = UDim2.new(1, -22, 1, 0),
+		Position = UDim2.new(0, 7, 0, 0), Size = UDim2.new(1, -24, 1, 0),
 	})
 	local arrow = create("ImageLabel", {
 		Name = "Button", BackgroundTransparency = 1, Image = Icons.Chevron,
 		ImageColor3 = Theme.Text, Size = UDim2.new(0, 11, 0, 11),
-		Position = UDim2.new(1, -14, 0.5, -5), ZIndex = 15, Parent = bar,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(1, -9, 0.5, 0), ZIndex = 15, Parent = bar,
 	})
 
+	-- Option list is a ScrollingFrame so a long list stays compact: it grows only
+	-- up to a capped height, then an accent-tinted scrollbar takes over. The bar
+	-- is hidden until there's actually overflow, so short lists look clean.
+	local OPT_H, OPT_GAP, LIST_PAD = 18, 3, 4
+	local MAX_VISIBLE = opts.MaxVisible or 6
+
 	local listWrap = bordered({ Fill = Theme.InnerFill, Border = Theme.InnerBorder, ZIndex = 205 })
-	listWrap.Root.Size = UDim2.new(1, -10, 0, 0)
-	listWrap.Root.Position = UDim2.new(0, 5, 0, 41)
+	listWrap.Root.Size = UDim2.new(1, -16, 0, 0)
+	listWrap.Root.Position = UDim2.new(0, 8, 0, 44)
 	listWrap.Root.Visible = false
 	listWrap.Root.ClipsDescendants = true
 	listWrap.Root.Parent = row.Content
 
-	local listCol = create("Frame", {
-		BackgroundTransparency = 1, Size = UDim2.new(1, -6, 1, -6),
-		Position = UDim2.new(0, 3, 0, 3), ZIndex = 206, Parent = listWrap.Content,
+	local listScroll = create("ScrollingFrame", {
+		Name = "Options", BackgroundTransparency = 1, BorderSizePixel = 0,
+		Size = UDim2.new(1, -LIST_PAD * 2, 1, -LIST_PAD * 2),
+		Position = UDim2.new(0, LIST_PAD, 0, LIST_PAD),
+		CanvasSize = UDim2.new(0, 0, 0, 0), AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		ScrollBarThickness = 3, ScrollingDirection = Enum.ScrollingDirection.Y,
+		ZIndex = 206, Parent = listWrap.Content,
 	}, {
-		create("UIListLayout", { Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder }),
+		create("UIListLayout", { Padding = UDim.new(0, OPT_GAP), SortOrder = Enum.SortOrder.LayoutOrder }),
 	})
+	-- Scrollbar picks up the live accent instead of a hardcoded gray.
+	self.Lib:_bindAccent(listScroll, "ScrollBarImageColor3")
 
 	local api = {}
 	local optButtons = {}
@@ -1055,24 +1345,28 @@ function Section:AddDropdown(opts)
 	end
 
 	local open = false
+	-- Visible list height: full content up to MAX_VISIBLE rows, then it caps and
+	-- the scrollbar handles the rest. Zero options means zero height (never opens).
 	local function listHeight()
 		local n = #options
 		if n == 0 then return 0 end
-		-- option rows (16) + inter-row gaps (3) + top/bottom padding (3 each)
-		return n * 16 + (n - 1) * 3 + 6
+		local shown = math.min(n, MAX_VISIBLE)
+		return shown * OPT_H + (shown - 1) * OPT_GAP + LIST_PAD * 2
 	end
 	local function setOpen(o)
+		-- An empty dropdown simply does nothing: no open, no empty black panel.
+		if o and #options == 0 then return end
 		if o == open then return end
 		open = o
-		tween(arrow, 0.15, { Rotation = o and 180 or 0 })
+		tween(arrow, Anim.Slow, { Rotation = o and 180 or 0 })
 		local h = o and listHeight() or 0
 		row.Wrap.ZIndex = o and 200 or 11
-		row.Wrap.Size = UDim2.new(1, 0, 0, o and (44 + h + 4) or 40)
+		row.Wrap.Size = UDim2.new(1, 0, 0, o and (Layout.DropH + 3 + h) or Layout.DropH)
 		if o then
 			listWrap.Root.Visible = true
-			tween(listWrap.Root, 0.15, { Size = UDim2.new(1, -10, 0, h) })
+			tween(listWrap.Root, Anim.Slow, { Size = UDim2.new(1, -16, 0, h) })
 		else
-			local t = tween(listWrap.Root, 0.12, { Size = UDim2.new(1, -10, 0, 0) })
+			local t = tween(listWrap.Root, Anim.Base, { Size = UDim2.new(1, -16, 0, 0) })
 			t.Completed:Connect(function()
 				if not open then listWrap.Root.Visible = false end
 			end)
@@ -1088,9 +1382,16 @@ function Section:AddDropdown(opts)
 				BorderSizePixel = 0, AutoButtonColor = false, Text = tostring(opt),
 				FontFace = Theme.Font, TextSize = Theme.TextSize,
 				TextColor3 = isSelected(opt) and Theme.TextBright or Theme.Text,
-				Size = UDim2.new(1, 0, 0, 16), ZIndex = 207,
-				LayoutOrder = i, Parent = listCol,
+				Size = UDim2.new(1, 0, 0, OPT_H), ZIndex = 207,
+				LayoutOrder = i, Parent = listScroll,
 			}, { corner(Theme.CornerSmall) })
+			-- Hover tint so the row the cursor is on is obvious even before click.
+			b.MouseEnter:Connect(function()
+				if not isSelected(opt) then tween(b, Anim.Fast, { BackgroundColor3 = Theme.InnerHover }) end
+			end)
+			b.MouseLeave:Connect(function()
+				if not isSelected(opt) then tween(b, Anim.Fast, { BackgroundColor3 = Theme.InnerFill }) end
+			end)
 			b.MouseButton1Click:Connect(function()
 				if multi then
 					if selected[opt] then selected[opt] = nil else selected[opt] = true end
@@ -1126,7 +1427,18 @@ function Section:AddDropdown(opts)
 		options = newOpts or options
 		if not keep then selected = multi and {} or options[1] end
 		rebuild(); refresh(false)
-		if open then setOpen(true) end
+		-- Re-fit an open list to the new option count; collapse if it emptied out.
+		if open then
+			if #options == 0 then
+				-- setOpen must see open==true to run its collapse branch, so we
+				-- let it flip the flag itself rather than pre-clearing it here.
+				setOpen(false)
+			else
+				local h = listHeight()
+				row.Wrap.Size = UDim2.new(1, 0, 0, Layout.DropH + 3 + h)
+				listWrap.Root.Size = UDim2.new(1, -16, 0, h)
+			end
+		end
 	end
 	api.Instance = row.Wrap
 	return api
@@ -1135,19 +1447,19 @@ end
 function Section:AddKeybind(opts)
 	opts = opts or {}
 	local key = opts.Default
-	local row = self:_row(20)
+	local row = self:_row(Layout.RowH)
 
 	label({
 		Parent = row.Content, Text = opts.Name or "Keybind",
-		ZIndex = 14, Position = UDim2.new(0, 6, 0, 0), Size = UDim2.new(1, -66, 1, 0),
+		ZIndex = 14, Position = UDim2.new(0, 8, 0, 0), Size = UDim2.new(1, -70, 1, 0),
 	})
 
 	local box = create("TextButton", {
-		Name = "Keybind", BorderSizePixel = 0,
+		Name = "Keybind", BorderSizePixel = 0, AnchorPoint = Vector2.new(1, 0.5),
 		AutoButtonColor = false, FontFace = Theme.Font, TextSize = Theme.TextSize,
 		TextColor3 = Theme.TextBright,
 		Text = key and key.Name or "None",
-		Size = UDim2.new(0, 50, 0, 14), Position = UDim2.new(1, -54, 0.5, -7),
+		Size = UDim2.new(0, 52, 0, 15), Position = UDim2.new(1, -8, 0.5, 0),
 		ZIndex = 15, Parent = row.Content, ClipsDescendants = true,
 	}, { corner(Theme.CornerSmall) })
 	self.Lib:_bindAccent(box, "BackgroundColor3", "dark")
@@ -1191,17 +1503,17 @@ end
 
 function Section:AddTextBox(opts)
 	opts = opts or {}
-	local row = self:_row(opts.Vertical and 40 or 20)
+	local row = self:_row(opts.Vertical and Layout.DropH or Layout.RowH)
 	registerFlag(self.Lib, opts.Flag, opts.Default or "")
 
 	if opts.Vertical then
 		label({
 			Parent = row.Content, Text = opts.Name or "Input",
-			ZIndex = 14, Position = UDim2.new(0, 6, 0, 2), Size = UDim2.new(1, -12, 0, 16),
+			ZIndex = 14, Position = UDim2.new(0, 8, 0, 3), Size = UDim2.new(1, -16, 0, 15),
 		})
 		local field = create("Frame", {
 			Name = "TextBox", BackgroundColor3 = Theme.AccentDark, BorderSizePixel = 0,
-			Size = UDim2.new(1, -10, 0, 15), Position = UDim2.new(0, 5, 0, 22),
+			Size = UDim2.new(1, -16, 0, 16), Position = UDim2.new(0, 8, 0, 24),
 			ZIndex = 14, Parent = row.Content,
 		}, { corner(Theme.CornerSmall) })
 		self.Lib:_bindAccent(field, "BackgroundColor3", "dark")
@@ -1211,7 +1523,7 @@ function Section:AddTextBox(opts)
 			TextXAlignment = Enum.TextXAlignment.Left,
 			PlaceholderText = opts.Placeholder or "", PlaceholderColor3 = Theme.TextDim,
 			Text = opts.Default or "", ClearTextOnFocus = false,
-			Size = UDim2.new(1, -10, 1, 0), Position = UDim2.new(0, 5, 0, 0),
+			Size = UDim2.new(1, -14, 1, 0), Position = UDim2.new(0, 7, 0, 0),
 			ZIndex = 15, Parent = field, ClipsDescendants = true,
 		})
 		box.FocusLost:Connect(function(enter)
@@ -1227,16 +1539,17 @@ function Section:AddTextBox(opts)
 
 	label({
 		Parent = row.Content, Text = opts.Name or "Input",
-		ZIndex = 14, Position = UDim2.new(0, 6, 0, 0), Size = UDim2.new(0.4, -6, 1, 0),
+		ZIndex = 14, Position = UDim2.new(0, 8, 0, 0), Size = UDim2.new(0.4, -10, 1, 0),
 	})
 	local box = create("TextBox", {
 		Name = "TextBox", BackgroundColor3 = Theme.AccentDark, BorderSizePixel = 0,
 		FontFace = Theme.Font, TextSize = Theme.TextSize, TextColor3 = Theme.Text,
 		PlaceholderText = opts.Placeholder or "", PlaceholderColor3 = Theme.TextDim,
 		Text = opts.Default or "", ClearTextOnFocus = false,
-		Size = UDim2.new(0.6, -10, 0, 14), Position = UDim2.new(0.4, 0, 0.5, -7),
+		AnchorPoint = Vector2.new(0, 0.5),
+		Size = UDim2.new(0.6, -12, 0, 16), Position = UDim2.new(0.4, 0, 0.5, 0),
 		ZIndex = 15, Parent = row.Content, ClipsDescendants = true,
-	}, { corner(Theme.CornerSmall), create("UIPadding", { PaddingLeft = UDim.new(0, 5), PaddingRight = UDim.new(0, 5) }) })
+	}, { corner(Theme.CornerSmall), create("UIPadding", { PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6) }) })
 	self.Lib:_bindAccent(box, "BackgroundColor3", "dark")
 
 	box.FocusLost:Connect(function(enter)
@@ -1257,24 +1570,27 @@ function Section:AddColorPicker(opts)
 	local h, s, v = color:ToHSV()
 	local expanded = false
 
-	local row = self:_row(20)
+	local row = self:_row(Layout.RowH)
 
 	label({
 		Parent = row.Content, Text = opts.Name or "Color",
-		ZIndex = 14, Position = UDim2.new(0, 6, 0, 0), Size = UDim2.new(1, -25, 0, 18),
+		ZIndex = 14, Position = UDim2.new(0, 8, 0, 0), Size = UDim2.new(1, -30, 1, 0),
 	})
 
+	-- Swatch is centre-anchored so it always sits on the row's vertical midline
+	-- (the old fixed top offset made it read as dropped a couple of pixels).
 	local swatch = create("ImageButton", {
 		AutoButtonColor = false, ImageTransparency = 1,
 		BackgroundColor3 = color, BorderSizePixel = 0,
-		Size = UDim2.new(0, 14, 0, 14), Position = UDim2.new(1, -18, 0, 3),
+		AnchorPoint = Vector2.new(0, 0.5),
+		Size = UDim2.new(0, 14, 0, 14), Position = UDim2.new(1, -22, 0, math.floor(Layout.RowH / 2)),
 		ZIndex = 15, Parent = row.Content,
 	}, { corner(Theme.CornerSmall) })
 	hoverLift(swatch)
 
 	local satBox = create("Frame", {
 		Name = "Saturation", BackgroundColor3 = Color3.fromHSV(h, 1, 1), BorderSizePixel = 0,
-		Size = UDim2.new(1, -31, 0, 70), Position = UDim2.new(0, 5, 0, 23),
+		Size = UDim2.new(1, -34, 0, 70), Position = UDim2.new(0, 8, 0, Layout.PadTop),
 		ZIndex = 15, Visible = false, Parent = row.Content,
 	}, {
 		corner(UDim.new(0, 2)),
@@ -1307,7 +1623,7 @@ function Section:AddColorPicker(opts)
 
 	local hueBar = create("Frame", {
 		Name = "Hue", BorderSizePixel = 0,
-		Size = UDim2.new(0, 14, 0, 70), Position = UDim2.new(1, -16, 0, 23),
+		Size = UDim2.new(0, 14, 0, 70), Position = UDim2.new(1, -22, 0, Layout.PadTop),
 		ZIndex = 15, Visible = false, Parent = row.Content,
 	}, {
 		corner(UDim.new(0, 2)),
@@ -1342,11 +1658,13 @@ function Section:AddColorPicker(opts)
 	end
 	apply(false)
 
+	-- Expanded panel: the sat/hue boxes start at y=26 and are 70 tall, so the row
+	-- opens to 26 + 70 + 8 padding. Collapsed it's a normal grid row.
 	local function setExpanded(o)
 		expanded = o
 		satBox.Visible = o
 		hueBar.Visible = o
-		row.Wrap.Size = UDim2.new(1, 0, 0, o and 98 or 20)
+		row.Wrap.Size = UDim2.new(1, 0, 0, o and 104 or Layout.RowH)
 	end
 
 	swatch.MouseButton1Click:Connect(function() setExpanded(not expanded) end)
@@ -1407,11 +1725,12 @@ function Section:AddConsole(opts)
 		Name = "Content", BackgroundTransparency = 1,
 		Size = UDim2.new(1, -10, 1, -10), Position = UDim2.new(0, 5, 0, 5),
 		CanvasSize = UDim2.new(0, 0, 0, 0), AutomaticCanvasSize = Enum.AutomaticSize.Y,
-		ScrollBarThickness = 2, ScrollBarImageColor3 = Theme.TopbarBorder,
+		ScrollBarThickness = 2,
 		ZIndex = 15, Parent = screen,
 	}, {
 		create("UIListLayout", { Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder }),
 	})
+	self.Lib:_bindAccent(scroll, "ScrollBarImageColor3")
 
 	local order = 0
 	local api = {}
