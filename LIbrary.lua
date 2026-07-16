@@ -25,18 +25,21 @@ local Theme = {
 	InnerBorder   = Color3.fromRGB(66, 66, 66),
 	InnerHover    = Color3.fromRGB(46, 46, 46),
 
-	Section       = Color3.fromRGB(11, 11, 11),
-	SectionBorder = Color3.fromRGB(31, 31, 31),
+	Section       = Color3.fromRGB(26, 26, 26),
+	SectionBorder = Color3.fromRGB(51, 51, 51),
+	Divider       = Color3.fromRGB(151, 151, 151),
 
 	Text          = Color3.fromRGB(201, 201, 201),
 	TextDim       = Color3.fromRGB(151, 151, 151),
+	TabInactive   = Color3.fromRGB(101, 101, 101),
+	TabActive     = Color3.fromRGB(201, 201, 201),
 	TextBright    = Color3.fromRGB(255, 255, 255),
 	Black         = Color3.fromRGB(0, 0, 0),
 
 	Font          = Font.new("rbxasset://fonts/families/Ubuntu.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal),
 	TextSize      = 10,
 	TitleSize     = 15,
-	SectionSize   = 14,
+	SectionSize   = 15,
 
 	CornerElement = UDim.new(0, 5),
 	CornerMenu    = UDim.new(0, 10),
@@ -368,22 +371,22 @@ function ProGui:CreateWindow(opts)
 
 	label({
 		Parent = topWrap.Content, Text = opts.Title or "ProGui",
-		Color = Theme.TextBright, TextSize = Theme.TitleSize, ZIndex = 6,
-		Position = UDim2.new(0, 8, 0, 0), Size = UDim2.new(0.5, 0, 1, 0),
+		Color = Theme.Text, TextSize = Theme.TitleSize, ZIndex = 6,
+		Position = UDim2.new(0, 5, 0, 0), Size = UDim2.new(0.5, 0, 1, 0),
 	})
 	label({
 		Parent = topWrap.Content, Text = opts.Subtitle or "",
-		Color = Theme.TextDim, XAlign = Enum.TextXAlignment.Right, ZIndex = 6,
-		Position = UDim2.new(0.5, 0, 0, 0), Size = UDim2.new(0.5, -28, 1, 0),
+		Color = Theme.Text, XAlign = Enum.TextXAlignment.Right, ZIndex = 6,
+		Position = UDim2.new(0.5, 0, 0, 0), Size = UDim2.new(0.5, -29, 1, 0),
 	})
 
-	local eyeRest = UDim2.new(1, -24, 0.5, -9)
-	local eyeHover = UDim2.new(1, -24, 0.5, -12)
+	local eyeRest = UDim2.new(1, -19, 0.5, -7)
+	local eyeHover = UDim2.new(1, -19, 0.5, -10)
 	local eyeBtn = create("ImageButton", {
 		Name = "Toggle", BackgroundTransparency = 1,
 		Image = opts.EyeIcon or Icons.Eye,
-		ImageColor3 = Theme.TextDim,
-		Size = UDim2.new(0, 18, 0, 18), Position = eyeRest,
+		ImageColor3 = Theme.Text,
+		Size = UDim2.new(0, 15, 0, 15), Position = eyeRest,
 		ZIndex = 6, Parent = topWrap.Content,
 	})
 	eyeBtn.MouseEnter:Connect(function()
@@ -395,13 +398,13 @@ function ProGui:CreateWindow(opts)
 	eyeBtn.MouseButton1Down:Connect(function() pressBounce(eyeBtn) end)
 
 	local sideWrap = bordered({ Fill = Theme.Topbar, Border = Theme.TopbarBorder, ZIndex = 5 })
-	sideWrap.Root.Size = UDim2.new(0, 40, 1, -40)
+	sideWrap.Root.Size = UDim2.new(0, 35, 1, -40)
 	sideWrap.Root.Position = UDim2.new(0, 5, 0, 35)
 	sideWrap.Root.Parent = menu
 
 	local tabList = create("Frame", {
-		BackgroundTransparency = 1, Size = UDim2.new(1, -8, 1, -8),
-		Position = UDim2.new(0, 4, 0, 4), ZIndex = 6, Parent = sideWrap.Content,
+		BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, -40),
+		Position = UDim2.new(0, 0, 0, 5), ZIndex = 6, Parent = sideWrap.Content,
 	}, {
 		create("UIListLayout", {
 			Padding = UDim.new(0, 5),
@@ -411,8 +414,8 @@ function ProGui:CreateWindow(opts)
 	})
 
 	local bottomList = create("Frame", {
-		BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 32),
-		Position = UDim2.new(0, 4, 1, -36), ZIndex = 6, Parent = sideWrap.Content,
+		BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 30),
+		Position = UDim2.new(0, 0, 1, -30), ZIndex = 6, Parent = sideWrap.Content,
 	}, {
 		create("UIListLayout", {
 			Padding = UDim.new(0, 5),
@@ -422,10 +425,32 @@ function ProGui:CreateWindow(opts)
 		}),
 	})
 
+	-- Bottom divider above the bottom tab group (gradient fade like the source).
+	create("Frame", {
+		Name = "Divider", ZIndex = 7, BorderSizePixel = 0,
+		BackgroundColor3 = Theme.TextDim,
+		Size = UDim2.new(1, 0, 0, 1), Position = UDim2.new(0, 0, 1, -30),
+		Parent = sideWrap.Content,
+	}, {
+		create("UIGradient", {
+			Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 1),
+				NumberSequenceKeypoint.new(0.5, 0.65),
+				NumberSequenceKeypoint.new(1, 1),
+			}),
+		}),
+	})
+
+	local pageWrap = bordered({ Fill = Theme.OuterFill, Border = Color3.fromRGB(41, 41, 41), ZIndex = 5 })
+	pageWrap.Root.Size = UDim2.new(1, -50, 1, -40)
+	pageWrap.Root.Position = UDim2.new(0, 45, 0, 35)
+	pageWrap.Root.Parent = menu
+	outline(pageWrap.Content, 100)
+
 	local pageHolder = create("Frame", {
 		Name = "Pages", BackgroundTransparency = 1,
-		Size = UDim2.new(1, -60, 1, -40),
-		Position = UDim2.new(0, 50, 0, 35), ZIndex = 5, Parent = menu,
+		Size = UDim2.new(1, -8, 1, -8),
+		Position = UDim2.new(0, 4, 0, 4), ZIndex = 6, Parent = pageWrap.Content,
 	})
 
 	makeDraggable(menu, topWrap.Root)
@@ -484,29 +509,40 @@ function Window:AddTab(opts)
 	opts = opts or {}
 	local parentList = opts.Bottom and self.BottomList or self.TabList
 
-	local btnWrap = bordered({ Fill = Theme.OuterFill, Border = Theme.OuterFill, ZIndex = 7 })
-	btnWrap.Root.Size = UDim2.new(0, 28, 0, 28)
-	btnWrap.Root.Parent = parentList
-	btnWrap.Border.BackgroundTransparency = 1
+	-- Real tabs are a bare 20x20 icon with a small "pin" dot as the active marker.
+	local tabFrame = create("Frame", {
+		Name = (opts.Name or "Tab") .. "_tab",
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 20),
+		Parent = parentList,
+	})
 
 	local btn = create("ImageButton", {
+		Name = "Button", ScaleType = Enum.ScaleType.Fit,
 		BackgroundTransparency = 1,
 		Image = opts.Icon or "",
-		ImageColor3 = Theme.TextDim,
+		ImageColor3 = Theme.TabInactive,
 		Size = UDim2.new(0, 20, 0, 20),
-		Position = UDim2.new(0.5, -10, 0.5, -10),
-		ZIndex = 9, Parent = btnWrap.Content,
+		Position = UDim2.new(0.5, -10, 0, 0),
+		ZIndex = 9, Parent = tabFrame,
+	})
+
+	local pin = create("ImageLabel", {
+		Name = "Pin", ScaleType = Enum.ScaleType.Fit,
+		BackgroundTransparency = 1, Image = Icons.Pin,
+		Size = UDim2.new(0, 7, 0, 7), Position = UDim2.new(0.5, -12, 0, 0),
+		Visible = false, ZIndex = 10, Parent = tabFrame,
 	})
 
 	local letter
 	if not opts.Icon or opts.Icon == "" then
 		btn.Image = ""
 		letter = label({
-			Parent = btnWrap.Content, Text = (opts.Name or "T"):sub(1, 1),
+			Parent = tabFrame, Text = (opts.Name or "T"):sub(1, 1),
 			XAlign = Enum.TextXAlignment.Center, ZIndex = 9,
 			TextSize = 12, Size = UDim2.new(1, 0, 1, 0),
 		})
-		letter.TextColor3 = Theme.TextDim
+		letter.TextColor3 = Theme.TabInactive
 	end
 
 	local page = create("ScrollingFrame", {
@@ -547,7 +583,7 @@ function Window:AddTab(opts)
 
 	local tabObj = setmetatable({
 		Window = self, Lib = self.Lib,
-		Button = btn, ButtonWrap = btnWrap, Letter = letter, Page = page,
+		Button = btn, Pin = pin, Frame = tabFrame, Letter = letter, Page = page,
 		Columns = colFrames, _nextCol = 1, Name = opts.Name,
 	}, Tab)
 
@@ -557,32 +593,32 @@ function Window:AddTab(opts)
 			local prev = self._activeTab
 			prev._active = false
 			prev.Page.Visible = false
-			tween(prev.ButtonWrap.Root, 0.15, { BackgroundColor3 = Theme.OuterFill })
-			tween(prev.Button, 0.15, { ImageColor3 = Theme.TextDim })
-			if prev.Letter then tween(prev.Letter, 0.15, { TextColor3 = Theme.TextDim }) end
+			prev.Pin.Visible = false
+			tween(prev.Button, 0.15, { ImageColor3 = Theme.TabInactive })
+			if prev.Letter then tween(prev.Letter, 0.15, { TextColor3 = Theme.TabInactive }) end
 		end
 		self._activeTab = tabObj
 		tabObj._active = true
 		page.Visible = true
-		tween(btnWrap.Root, 0.15, { BackgroundColor3 = Theme.AccentBg })
-		tween(btn, 0.15, { ImageColor3 = Theme.Accent })
-		if letter then tween(letter, 0.15, { TextColor3 = Theme.TextBright }) end
+		pin.Visible = true
+		tween(btn, 0.15, { ImageColor3 = Theme.TabActive })
+		if letter then tween(letter, 0.15, { TextColor3 = Theme.TabActive }) end
 	end
 
 	-- Hover: idle tabs fade gray -> white, then back to gray on leave.
 	btn.MouseEnter:Connect(function()
 		if tabObj._active then return end
-		tween(btn, 0.2, { ImageColor3 = Theme.TextBright })
-		if letter then tween(letter, 0.2, { TextColor3 = Theme.TextBright }) end
+		tween(btn, 0.2, { ImageColor3 = Theme.TabActive })
+		if letter then tween(letter, 0.2, { TextColor3 = Theme.TabActive }) end
 	end)
 	btn.MouseLeave:Connect(function()
 		if tabObj._active then return end
-		tween(btn, 0.2, { ImageColor3 = Theme.TextDim })
-		if letter then tween(letter, 0.2, { TextColor3 = Theme.TextDim }) end
+		tween(btn, 0.2, { ImageColor3 = Theme.TabInactive })
+		if letter then tween(letter, 0.2, { TextColor3 = Theme.TabInactive }) end
 	end)
 
 	btn.MouseButton1Click:Connect(function()
-		pressBounce(btnWrap.Root)
+		pressBounce(btn)
 		select()
 	end)
 	tabObj.Select = select
@@ -601,25 +637,39 @@ function Tab:AddSection(opts)
 		self._nextCol = (self._nextCol % #self.Columns) + 1
 	end
 
-	local wrap = bordered({ Fill = Theme.Section, Border = Theme.SectionBorder, ZIndex = 8 })
+	local wrap = bordered({ Fill = Theme.Section, Border = Theme.SectionBorder, ZIndex = 9 })
 	wrap.Root.Size = UDim2.new(1, 0, 0, 34)
 	wrap.Root.AutomaticSize = Enum.AutomaticSize.Y
 	wrap.Root.Parent = col
 
 	label({
 		Parent = wrap.Content, Text = opts.Name or "Section",
-		Color = Theme.TextBright, TextSize = Theme.SectionSize, ZIndex = 9,
+		Color = Theme.Text, TextSize = Theme.SectionSize, ZIndex = 10,
 		XAlign = Enum.TextXAlignment.Center,
-		Position = UDim2.new(0, 8, 0, 6), Size = UDim2.new(1, -16, 0, 18),
+		Position = UDim2.new(0, 0, 0, 0), Size = UDim2.new(1, 0, 0, 20),
+	})
+
+	create("Frame", {
+		Name = "Divider", BorderSizePixel = 0, BackgroundColor3 = Theme.Divider,
+		Size = UDim2.new(1, 0, 0, 1), Position = UDim2.new(0, 0, 0, 20),
+		ZIndex = 10, Parent = wrap.Content,
+	}, {
+		create("UIGradient", {
+			Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 1),
+				NumberSequenceKeypoint.new(0.5, 0.65),
+				NumberSequenceKeypoint.new(1, 1),
+			}),
+		}),
 	})
 
 	local elements = create("Frame", {
 		Name = "Elements", BackgroundTransparency = 1,
-		Size = UDim2.new(1, -14, 0, 0), Position = UDim2.new(0, 7, 0, 30),
-		AutomaticSize = Enum.AutomaticSize.Y, ZIndex = 9, Parent = wrap.Content,
+		Size = UDim2.new(1, -10, 0, 0), Position = UDim2.new(0, 5, 0, 25),
+		AutomaticSize = Enum.AutomaticSize.Y, ZIndex = 10, Parent = wrap.Content,
 	}, {
 		create("UIListLayout", { Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder }),
-		create("UIPadding", { PaddingBottom = UDim.new(0, 8) }),
+		create("UIPadding", { PaddingBottom = UDim.new(0, 5) }),
 	})
 
 	return setmetatable({
