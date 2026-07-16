@@ -25,6 +25,7 @@ local Theme = {
 	InnerBorder   = Color3.fromRGB(66, 66, 66),
 	InnerHover    = Color3.fromRGB(46, 46, 46),
 
+	SectionOuterB = Color3.fromRGB(26, 26, 26),
 	Section       = Color3.fromRGB(26, 26, 26),
 	SectionBorder = Color3.fromRGB(51, 51, 51),
 	Divider       = Color3.fromRGB(151, 151, 151),
@@ -80,20 +81,64 @@ local function tween(inst, time, props, style, dir)
 	return t
 end
 
+-- Forces an element to scale about its own centre so UIScale animations
+-- (press/bounce) grow evenly on every side instead of from the top-left.
+local function centerAnchor(inst)
+	if inst:GetAttribute("_centered") then return end
+	inst:SetAttribute("_centered", true)
+	-- Elements already anchored elsewhere (e.g. a 0.5,0.5 slider handle) are
+	-- left as-is; re-centering them would shift their position by half a size.
+	if inst.AnchorPoint.X ~= 0 or inst.AnchorPoint.Y ~= 0 then return end
+	local pos, size = inst.Position, inst.Size
+	inst.AnchorPoint = Vector2.new(0.5, 0.5)
+	inst.Position = UDim2.new(
+		pos.X.Scale + size.X.Scale / 2, pos.X.Offset + size.X.Offset / 2,
+		pos.Y.Scale + size.Y.Scale / 2, pos.Y.Offset + size.Y.Offset / 2
+	)
+end
+
 -- Ensures a UIScale on inst and plays a subtle press-then-bounce animation.
+-- The element is re-anchored to its centre so the bounce is symmetrical.
 local function pressBounce(inst, downScale)
+	centerAnchor(inst)
 	local ui = inst:FindFirstChildOfClass("UIScale")
 	if not ui then
 		ui = Instance.new("UIScale")
 		ui.Scale = 1
 		ui.Parent = inst
 	end
-	downScale = downScale or 0.92
-	tween(ui, 0.07, { Scale = downScale }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-	task.delay(0.07, function()
+	downScale = downScale or 0.9
+	tween(ui, 0.08, { Scale = downScale }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	task.delay(0.08, function()
 		if ui.Parent then
-			tween(ui, 0.3, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+			tween(ui, 0.35, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 		end
+	end)
+end
+
+-- Subtle hover lift: the control eases a couple of pixels upward on hover and
+-- settles back on leave. Position is captured lazily so callers don't need to
+-- pass it in, and the base is stored on an attribute to survive repeat hovers.
+local function hoverLift(inst, amount)
+	amount = amount or 2
+	-- Settle the anchor up front so the lift baseline matches whatever a later
+	-- pressBounce would use, avoiding a one-frame jump on the first click.
+	centerAnchor(inst)
+	local function baseY()
+		local stored = inst:GetAttribute("_liftBaseY")
+		if stored == nil then
+			stored = inst.Position.Y.Offset
+			inst:SetAttribute("_liftBaseY", stored)
+		end
+		return stored
+	end
+	inst.MouseEnter:Connect(function()
+		local p = inst.Position
+		tween(inst, 0.15, { Position = UDim2.new(p.X.Scale, p.X.Offset, p.Y.Scale, baseY() - amount) })
+	end)
+	inst.MouseLeave:Connect(function()
+		local p = inst.Position
+		tween(inst, 0.2, { Position = UDim2.new(p.X.Scale, p.X.Offset, p.Y.Scale, baseY()) })
 	end)
 end
 
@@ -140,7 +185,7 @@ local function outline(parent, zindex)
 		Parent = parent,
 	}, {
 		corner(),
-		create("UIStroke", { Transparency = 0.9, Thickness = 0.5, Color = Theme.TextBright }),
+		create("UIStroke", { Transparency = 0.97, Thickness = 0.5, Color = Theme.TextBright }),
 	})
 end
 
@@ -509,7 +554,7 @@ function Window:AddTab(opts)
 	opts = opts or {}
 	local parentList = opts.Bottom and self.BottomList or self.TabList
 
-	-- Real tabs are a bare 20x20 icon with a small "pin" dot as the active marker.
+	-- Tabs are a bare 20x20 icon; the active tab is shown by icon color only.
 	local tabFrame = create("Frame", {
 		Name = (opts.Name or "Tab") .. "_tab",
 		BackgroundTransparency = 1,
@@ -525,13 +570,6 @@ function Window:AddTab(opts)
 		Size = UDim2.new(0, 20, 0, 20),
 		Position = UDim2.new(0.5, -10, 0, 0),
 		ZIndex = 9, Parent = tabFrame,
-	})
-
-	local pin = create("ImageLabel", {
-		Name = "Pin", ScaleType = Enum.ScaleType.Fit,
-		BackgroundTransparency = 1, Image = Icons.Pin,
-		Size = UDim2.new(0, 7, 0, 7), Position = UDim2.new(0.5, -12, 0, 0),
-		Visible = false, ZIndex = 10, Parent = tabFrame,
 	})
 
 	local letter
@@ -583,7 +621,7 @@ function Window:AddTab(opts)
 
 	local tabObj = setmetatable({
 		Window = self, Lib = self.Lib,
-		Button = btn, Pin = pin, Frame = tabFrame, Letter = letter, Page = page,
+		Button = btn, Frame = tabFrame, Letter = letter, Page = page,
 		Columns = colFrames, _nextCol = 1, Name = opts.Name,
 	}, Tab)
 
@@ -593,32 +631,30 @@ function Window:AddTab(opts)
 			local prev = self._activeTab
 			prev._active = false
 			prev.Page.Visible = false
-			prev.Pin.Visible = false
 			tween(prev.Button, 0.15, { ImageColor3 = Theme.TabInactive })
 			if prev.Letter then tween(prev.Letter, 0.15, { TextColor3 = Theme.TabInactive }) end
 		end
 		self._activeTab = tabObj
 		tabObj._active = true
 		page.Visible = true
-		pin.Visible = true
-		tween(btn, 0.15, { ImageColor3 = Theme.TabActive })
-		if letter then tween(letter, 0.15, { TextColor3 = Theme.TabActive }) end
+		tween(btn, 0.18, { ImageColor3 = Theme.TabActive })
+		if letter then tween(letter, 0.18, { TextColor3 = Theme.TabActive }) end
 	end
 
-	-- Hover: idle tabs fade gray -> white, then back to gray on leave.
+	-- Hover: idle tabs ease gently from gray toward the active tone, back on leave.
 	btn.MouseEnter:Connect(function()
 		if tabObj._active then return end
-		tween(btn, 0.2, { ImageColor3 = Theme.TabActive })
-		if letter then tween(letter, 0.2, { TextColor3 = Theme.TabActive }) end
+		tween(btn, 0.2, { ImageColor3 = Theme.Text })
+		if letter then tween(letter, 0.2, { TextColor3 = Theme.Text }) end
 	end)
 	btn.MouseLeave:Connect(function()
 		if tabObj._active then return end
-		tween(btn, 0.2, { ImageColor3 = Theme.TabInactive })
-		if letter then tween(letter, 0.2, { TextColor3 = Theme.TabInactive }) end
+		tween(btn, 0.25, { ImageColor3 = Theme.TabInactive })
+		if letter then tween(letter, 0.25, { TextColor3 = Theme.TabInactive }) end
 	end)
 
 	btn.MouseButton1Click:Connect(function()
-		pressBounce(btn)
+		pressBounce(btn, 0.9)
 		select()
 	end)
 	tabObj.Select = select
@@ -637,13 +673,29 @@ function Tab:AddSection(opts)
 		self._nextCol = (self._nextCol % #self.Columns) + 1
 	end
 
-	local wrap = bordered({ Fill = Theme.Section, Border = Theme.SectionBorder, ZIndex = 9 })
-	wrap.Root.Size = UDim2.new(1, 0, 0, 34)
-	wrap.Root.AutomaticSize = Enum.AutomaticSize.Y
-	wrap.Root.Parent = col
+	-- Source sections carry a two-tone border: a 51,51,51 ring hugging the
+	-- 26,26,26 panel, wrapped again by a 26,26,26 ring. Both rings are scale
+	-- sized so they're ignored by the panel's AutomaticSize growth.
+	local root = create("Frame", {
+		Name = "Section", BackgroundColor3 = Theme.Section, BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, 34), AutomaticSize = Enum.AutomaticSize.Y,
+		ZIndex = 9, Parent = col,
+	}, { corner() })
+
+	create("Frame", {
+		Name = "Border", BackgroundColor3 = Theme.SectionBorder, BorderSizePixel = 0,
+		Size = UDim2.new(1, 2, 1, 2), Position = UDim2.new(0, -1, 0, -1),
+		ZIndex = 8, Parent = root,
+	}, { corner() })
+
+	create("Frame", {
+		Name = "BorderOuter", BackgroundColor3 = Theme.SectionOuterB, BorderSizePixel = 0,
+		Size = UDim2.new(1, 4, 1, 4), Position = UDim2.new(0, -2, 0, -2),
+		ZIndex = 7, Parent = root,
+	}, { corner() })
 
 	label({
-		Parent = wrap.Content, Text = opts.Name or "Section",
+		Parent = root, Text = opts.Name or "Section",
 		Color = Theme.Text, TextSize = Theme.SectionSize, ZIndex = 10,
 		XAlign = Enum.TextXAlignment.Center,
 		Position = UDim2.new(0, 0, 0, 0), Size = UDim2.new(1, 0, 0, 20),
@@ -652,7 +704,7 @@ function Tab:AddSection(opts)
 	create("Frame", {
 		Name = "Divider", BorderSizePixel = 0, BackgroundColor3 = Theme.Divider,
 		Size = UDim2.new(1, 0, 0, 1), Position = UDim2.new(0, 0, 0, 20),
-		ZIndex = 10, Parent = wrap.Content,
+		ZIndex = 10, Parent = root,
 	}, {
 		create("UIGradient", {
 			Transparency = NumberSequence.new({
@@ -666,14 +718,14 @@ function Tab:AddSection(opts)
 	local elements = create("Frame", {
 		Name = "Elements", BackgroundTransparency = 1,
 		Size = UDim2.new(1, -10, 0, 0), Position = UDim2.new(0, 5, 0, 25),
-		AutomaticSize = Enum.AutomaticSize.Y, ZIndex = 10, Parent = wrap.Content,
+		AutomaticSize = Enum.AutomaticSize.Y, ZIndex = 10, Parent = root,
 	}, {
 		create("UIListLayout", { Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder }),
-		create("UIPadding", { PaddingBottom = UDim.new(0, 5) }),
+		create("UIPadding", { PaddingBottom = UDim.new(0, 8) }),
 	})
 
 	return setmetatable({
-		Tab = self, Lib = self.Lib, Root = wrap.Root, Holder = elements,
+		Tab = self, Lib = self.Lib, Root = root, Holder = elements,
 	}, Section)
 end
 
@@ -736,6 +788,7 @@ function Section:AddButton(opts)
 		ZIndex = 15, Parent = row.Content,
 	}, { corner(Theme.CornerSmall) })
 	self.Lib:_bindAccent(box, "BackgroundColor3")
+	hoverLift(box)
 
 	local function fire()
 		pressBounce(box)
@@ -767,6 +820,7 @@ function Section:AddToggle(opts)
 		ZIndex = 14, Parent = row.Content, BorderSizePixel = 0,
 	}, { corner(UDim.new(1, 0)) })
 	self.Lib:_bindAccent(pill, "BackgroundColor3", state and "accent" or "bg")
+	hoverLift(pill)
 
 	local dot = create("Frame", {
 		Name = "Dot", BackgroundColor3 = state and Theme.TextBright or Theme.TextDim,
@@ -832,24 +886,34 @@ function Section:AddSlider(opts)
 		Parent = row.Content, Text = opts.Name or "Slider",
 		ZIndex = 14, Position = UDim2.new(0, 6, 0, 2), Size = UDim2.new(1, -60, 0, 14),
 	})
-	local valLabel = label({
-		Parent = row.Content, Text = tostring(round(value)) .. suffix,
-		Color = Theme.TextDim, XAlign = Enum.TextXAlignment.Right, ZIndex = 14,
+	local function fmt(v)
+		if decimals > 0 then return string.format("%.2f", v) end
+		return tostring(v)
+	end
+
+	-- Editable value: a TextBox so users can type an exact number. Suffix is
+	-- shown in a separate label so it never gets in the way of parsing input.
+	local valBox = create("TextBox", {
+		Name = "Value", BackgroundTransparency = 1, ClearTextOnFocus = false,
+		FontFace = Theme.Font, TextSize = Theme.TextSize, TextColor3 = Theme.TextDim,
+		TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 14,
+		Text = fmt(round(value)) .. suffix,
 		Position = UDim2.new(1, -56, 0, 2), Size = UDim2.new(0, 50, 0, 14),
+		Parent = row.Content,
 	})
 
 	local track = create("Frame", {
 		Name = "Slider", BorderSizePixel = 0,
 		Size = UDim2.new(1, -12, 0, 5), Position = UDim2.new(0, 6, 1, -11),
 		ZIndex = 14, Parent = row.Content,
-	}, { corner(UDim.new(1, 0)) })
+	}, { corner(UDim.new(0, 3)) })
 	self.Lib:_bindAccent(track, "BackgroundColor3", "bg")
 
 	local fill = create("Frame", {
 		Name = "Fill", BorderSizePixel = 0,
 		Size = UDim2.new((value - min) / (max - min), 0, 1, 0),
 		ZIndex = 15, Parent = track,
-	}, { corner(UDim.new(1, 0)) })
+	}, { corner(UDim.new(0, 3)) })
 	self.Lib:_bindAccent(fill, "BackgroundColor3")
 
 	local handle = create("Frame", {
@@ -857,13 +921,7 @@ function Section:AddSlider(opts)
 		Size = UDim2.new(0, 7, 0, 7), AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new((value - min) / (max - min), 0, 0.5, 0),
 		ZIndex = 16, Parent = track,
-	}, { corner(UDim.new(1, 0)) })
-
-	local function fmt(v)
-		if decimals > 0 then return string.format("%.2f", v) .. suffix end
-		return tostring(v) .. suffix
-	end
-	valLabel.Text = fmt(round(value))
+	}, { corner(UDim.new(0, 2)) })
 
 	local api = {}
 	local function setFromScale(scale, fire)
@@ -872,10 +930,21 @@ function Section:AddSlider(opts)
 		local realScale = (value - min) / (max - min)
 		tween(fill, 0.06, { Size = UDim2.new(realScale, 0, 1, 0) })
 		tween(handle, 0.06, { Position = UDim2.new(realScale, 0, 0.5, 0) })
-		valLabel.Text = fmt(value)
+		valBox.Text = fmt(value) .. suffix
 		registerFlag(self.Lib, opts.Flag, value)
 		if fire and opts.Callback then task.spawn(opts.Callback, value) end
 	end
+
+	-- Typed input: strip the suffix, clamp, and snap to the slider.
+	valBox.FocusLost:Connect(function()
+		local raw = valBox.Text:gsub("[^%-%d%.]", "")
+		local num = tonumber(raw)
+		if num then
+			setFromScale((math.clamp(num, min, max) - min) / (max - min), true)
+		else
+			valBox.Text = fmt(value) .. suffix
+		end
+	end)
 
 	local dragging = false
 	local function growHandle()
@@ -953,18 +1022,18 @@ function Section:AddDropdown(opts)
 		Position = UDim2.new(1, -14, 0.5, -5), ZIndex = 15, Parent = bar,
 	})
 
-	local listWrap = bordered({ Fill = Theme.OuterFill, Border = Theme.OuterBorder, ZIndex = 205 })
+	local listWrap = bordered({ Fill = Theme.InnerFill, Border = Theme.InnerBorder, ZIndex = 205 })
 	listWrap.Root.Size = UDim2.new(1, -10, 0, 0)
-	listWrap.Root.Position = UDim2.new(0, 5, 0, 38)
+	listWrap.Root.Position = UDim2.new(0, 5, 0, 41)
 	listWrap.Root.Visible = false
 	listWrap.Root.ClipsDescendants = true
 	listWrap.Root.Parent = row.Content
 
 	local listCol = create("Frame", {
-		BackgroundTransparency = 1, Size = UDim2.new(1, -4, 1, -4),
-		Position = UDim2.new(0, 2, 0, 2), ZIndex = 206, Parent = listWrap.Content,
+		BackgroundTransparency = 1, Size = UDim2.new(1, -6, 1, -6),
+		Position = UDim2.new(0, 3, 0, 3), ZIndex = 206, Parent = listWrap.Content,
 	}, {
-		create("UIListLayout", { Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder }),
+		create("UIListLayout", { Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder }),
 	})
 
 	local api = {}
@@ -986,13 +1055,19 @@ function Section:AddDropdown(opts)
 	end
 
 	local open = false
+	local function listHeight()
+		local n = #options
+		if n == 0 then return 0 end
+		-- option rows (16) + inter-row gaps (3) + top/bottom padding (3 each)
+		return n * 16 + (n - 1) * 3 + 6
+	end
 	local function setOpen(o)
 		if o == open then return end
 		open = o
 		tween(arrow, 0.15, { Rotation = o and 180 or 0 })
-		local h = o and (#options * 18 + 4) or 0
+		local h = o and listHeight() or 0
 		row.Wrap.ZIndex = o and 200 or 11
-		row.Wrap.Size = UDim2.new(1, 0, 0, o and (40 + h + 4) or 40)
+		row.Wrap.Size = UDim2.new(1, 0, 0, o and (44 + h + 4) or 40)
 		if o then
 			listWrap.Root.Visible = true
 			tween(listWrap.Root, 0.15, { Size = UDim2.new(1, -10, 0, h) })
@@ -1015,7 +1090,7 @@ function Section:AddDropdown(opts)
 				TextColor3 = isSelected(opt) and Theme.TextBright or Theme.Text,
 				Size = UDim2.new(1, 0, 0, 16), ZIndex = 207,
 				LayoutOrder = i, Parent = listCol,
-			}, { corner() })
+			}, { corner(Theme.CornerSmall) })
 			b.MouseButton1Click:Connect(function()
 				if multi then
 					if selected[opt] then selected[opt] = nil else selected[opt] = true end
@@ -1076,10 +1151,12 @@ function Section:AddKeybind(opts)
 		ZIndex = 15, Parent = row.Content, ClipsDescendants = true,
 	}, { corner(Theme.CornerSmall) })
 	self.Lib:_bindAccent(box, "BackgroundColor3", "dark")
+	hoverLift(box)
 
 	local api = {}
 	local listening = false
 	box.MouseButton1Click:Connect(function()
+		pressBounce(box)
 		listening = true
 		box.Text = "..."
 		box.TextColor3 = Theme.TextBright
@@ -1193,6 +1270,7 @@ function Section:AddColorPicker(opts)
 		Size = UDim2.new(0, 14, 0, 14), Position = UDim2.new(1, -18, 0, 3),
 		ZIndex = 15, Parent = row.Content,
 	}, { corner(Theme.CornerSmall) })
+	hoverLift(swatch)
 
 	local satBox = create("Frame", {
 		Name = "Saturation", BackgroundColor3 = Color3.fromHSV(h, 1, 1), BorderSizePixel = 0,
