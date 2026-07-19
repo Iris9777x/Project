@@ -55,6 +55,7 @@ local function __build_AmberUI()
 	local __n_Components_Card = __node("Card", __n_Components)
 	local __n_Components_Nav = __node("Nav", __n_Components)
 	local __n_Components_Badge = __node("Badge", __n_Components)
+	local __n_Components_Dropdown = __node("Dropdown", __n_Components)
 	local __n_Components_Modal = __node("Modal", __n_Components)
 	local __n_Components_Terminal = __node("Terminal", __n_Components)
 
@@ -94,6 +95,7 @@ local function __build_AmberUI()
 			Card      = require(Components.Card),
 			Nav       = require(Components.Nav),
 			Badge     = require(Components.Badge),
+			Dropdown  = require(Components.Dropdown),
 			Modal     = require(Components.Modal),
 			Terminal  = require(Components.Terminal),
 		}
@@ -195,6 +197,7 @@ local function __build_AmberUI()
 		Theme.Shape = {
 			Corner      = UDim.new(0, 6),  -- .amber border-radius:6px
 			CornerSoft  = UDim.new(0, 4),
+			CornerTab   = UDim.new(0, 3),  -- onglets .amber-nav : quasi carrés
 			Stroke      = 1,
 			StrokeThick = 2,
 		}
@@ -400,57 +403,61 @@ local function __build_AmberUI()
 		--!strict
 		-- AmberUI / Glow.lua
 		-- =====================================================================
-		-- Le halo lumineux "réel" du concept. Le CSS d'origine utilise
-		--   box-shadow:0 0 10px rgba(220,38,38,.6)
-		-- que UIStroke seul ne reproduit pas (pas de diffusion). On combine donc :
-		--   1) un ImageLabel avec une texture radiale floutée (vrai halo diffus)
-		--   2) un UIStroke à Transparency animée (le liseré net brutaliste)
+		-- Halo ambre "box-shadow" du concept (.amber { box-shadow:0 0 50px rgba(251,191,36,.12) }).
 		--
-		-- La texture radiale utilisée est l'asset Roblox standard de glow radial.
-		-- Si tu as ta propre texture, remplace GLOW_TEXTURE ci-dessous.
+		-- PROBLÈME de l'ancienne version : une texture radiale étirée sur un
+		-- rectangle large devient un ovale délavé qui NE COLLE PAS aux coins ->
+		-- rendu "rectangle blanchâtre" moche.
+		--
+		-- SOLUTION : on utilise une image d'ombre douce en 9-slice (ScaleType.Slice).
+		-- Le 9-slice garde des bords doux constants quelle que soit la taille du
+		-- panneau : le halo épouse donc parfaitement le rectangle arrondi, comme un
+		-- vrai box-shadow. On la teinte en ambre via ImageColor3.
 		--
 		-- Réutilisation :
-		--   local Glow = require(path.to.ProtocolUI.Glow)
-		--   local halo = Glow.attach(monBouton, { color = Theme.Color.Primary })
-		--   halo:setActive(true)   -- intensifie (hover/on)
+		--   local Glow = require(path.to.AmberUI.Glow)
+		--   local halo = Glow.attach(monPanneau, { color = Theme.Color.Primary, spread = 40 })
+		--   halo:setActive(true)   -- intensifie
 		--   halo:pulse()           -- respiration continue (état "live")
+		--   halo:destroy()
 		-- =====================================================================
 
 		local RunService = game:GetService("RunService")
 		local Util = require(script.Parent.Util)
 
-		-- Texture radiale floue standard (halo doux). Asset public Roblox.
-		local GLOW_TEXTURE = "rbxassetid://5028857084" -- radial glow (soft)
+		-- Ombre douce 9-slice (asset public, bords flous constants).
+		local SHADOW_TEXTURE = "rbxassetid://6014261993"
+		local SHADOW_SLICE = Rect.new(49, 49, 450, 450)
 
 		local Glow = {}
 		Glow.__index = Glow
 
 		type GlowConfig = {
 			color: Color3?,
-			rest: number?,     -- transparency au repos (0..1)
-			active: number?,   -- transparency actif
-			spread: number?,   -- débordement du halo en px
-			stroke: boolean?,  -- ajouter aussi un UIStroke net ? (défaut true)
+			rest: number?,     -- transparency au repos (0..1) ; plus haut = plus subtil
+			active: number?,   -- transparency quand actif
+			spread: number?,   -- débordement du halo en px (le "blur radius")
+			stroke: boolean?,  -- ajouter aussi un liseré net ? (défaut false ici)
 		}
 
 		-- attach(target, config) : pose un halo DERRIÈRE `target`.
-		-- Le halo est parenté À L'INTÉRIEUR de la cible, centré avec un inset négatif
-		-- (Size = 1 + spread des deux côtés). Il suit donc automatiquement la
-		-- taille/position de la cible (aucun binding manuel = responsive + performant),
-		-- et n'est PAS capturé par un éventuel UIListLayout du parent.
+		-- Le halo est enfant de la cible, centré, débordant via un inset négatif
+		-- (Size = 1 + spread*2). Il suit donc automatiquement taille/position de la
+		-- cible (responsive, aucun binding) et n'est pas capturé par un UIListLayout.
 		-- Sous ZIndexBehavior.Sibling, un ZIndex inférieur le rend derrière la cible.
 		function Glow.attach(target: GuiObject, config: GlowConfig?)
 			config = config or {}
-			local color = config.color or Color3.fromRGB(220, 38, 38)
+			local color = config.color or Color3.fromRGB(251, 191, 36)
 			local rest = config.rest or 0.55
-			local active = config.active or 0.15
-			local spread = config.spread or 18
+			local active = config.active or 0.3
+			local spread = config.spread or 40
 
-			-- Halo diffus (ImageLabel radial) enfant de la cible, débordant via inset.
 			local halo = Util.make("ImageLabel", {
 				Name = "Glow",
 				BackgroundTransparency = 1,
-				Image = GLOW_TEXTURE,
+				Image = SHADOW_TEXTURE,
+				ScaleType = Enum.ScaleType.Slice,
+				SliceCenter = SHADOW_SLICE,
 				ImageColor3 = color,
 				ImageTransparency = rest,
 				ZIndex = math.max(target.ZIndex - 1, 0),
@@ -461,9 +468,9 @@ local function __build_AmberUI()
 				Selectable = false,
 			}, target) :: ImageLabel
 
-			-- Liseré net optionnel (le côté brutaliste).
+			-- Liseré net optionnel (rarement utilisé sur le CRT, halo diffus surtout).
 			local stroke: UIStroke? = nil
-			if config.stroke ~= false then
+			if config.stroke == true then
 				stroke = Util.stroke(color, 1, rest, target)
 			end
 
@@ -474,7 +481,6 @@ local function __build_AmberUI()
 				_rest = rest,
 				_active = active,
 				_pulsing = false,
-				_conns = {},
 				_heartbeat = nil :: RBXScriptConnection?,
 			}, Glow)
 
@@ -490,12 +496,11 @@ local function __build_AmberUI()
 			end
 		end
 
-		-- pulse() : respiration continue (RunService.Heartbeat, une seule boucle).
-		-- Idéal pour un status "live"/"injected". Appeler stop() pour arrêter.
+		-- pulse() : respiration continue (une seule boucle Heartbeat). Idéal "live".
 		function Glow:pulse(speed: number?)
 			if self._pulsing then return end
 			self._pulsing = true
-			local sp = speed or 1.1
+			local sp = speed or 1.3
 			local t0 = os.clock()
 			self._heartbeat = RunService.Heartbeat:Connect(function()
 				local phase = (math.sin((os.clock() - t0) * math.pi / sp) + 1) / 2 -- 0..1
@@ -515,10 +520,9 @@ local function __build_AmberUI()
 			self:setActive(false)
 		end
 
-		-- destroy() : nettoyage complet (connexions + instances).
+		-- destroy() : nettoyage complet.
 		function Glow:destroy()
 			self:stop()
-			for _, c in ipairs(self._conns) do c:Disconnect() end
 			self.halo:Destroy()
 		end
 
@@ -1290,8 +1294,8 @@ local function __build_AmberUI()
 					Font = Theme.Font.Mono, TextColor3 = Theme.Color.NavMuted, TextSize = Theme.Text.Small,
 					BorderSizePixel = 0, LayoutOrder = i,
 				}, root) :: TextButton
-				Util.paddingXY(8, 4, tab)
-				Util.corner(Theme.Shape.CornerSoft, tab)
+				Util.paddingXY(10, 5, tab)
+				Util.corner(Theme.Shape.CornerTab, tab) -- coins quasi carrés (comme le site)
 				Util.textConstraint(10, 15, tab)
 				self._tabs[i] = tab
 
@@ -1358,7 +1362,6 @@ local function __build_AmberUI()
 
 		local Theme = require(script.Parent.Parent.Theme)
 		local Util  = require(script.Parent.Parent.Util)
-		local Glow  = require(script.Parent.Parent.Glow)
 
 		local Badge = {}
 
@@ -1397,30 +1400,50 @@ local function __build_AmberUI()
 			local tone = props.tone or "on"
 			local color = TONES[tone] or Theme.Color.On
 
+			-- Pur texte "▸ RUNNING" avec phosphore (TextStroke). PLUS DE BOÎTE derrière :
+			-- l'ancienne version posait un Glow rectangulaire -> vilain cadre vert.
 			local lbl = Util.make("TextLabel", {
 				Name = "AmberStatus", BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.X,
-				Size = UDim2.new(0, 0, 0, 18), Font = Theme.Font.Mono,
+				Size = UDim2.new(0, 0, 0, 20), Font = Theme.Font.Mono,
 				Text = "\226\150\184 " .. string.upper(props.text or "RUNNING"), -- ▸
 				TextColor3 = color, TextSize = Theme.Text.Body, LayoutOrder = props.layoutOrder or 0,
-				TextStrokeColor3 = color, TextStrokeTransparency = 0.6,
+				TextStrokeColor3 = color, TextStrokeTransparency = 0.5,
 			}, props.parent) :: TextLabel
 			Util.textConstraint(11, 18, lbl)
 
-			-- Glow doux derrière le texte (halo phosphore).
-			local glow = Glow.attach(lbl, { color = color, rest = 0.6, active = 0.3, spread = 14, stroke = false })
+			local self = setmetatable({
+				instance = lbl, _lbl = lbl, _color = color,
+				_pulsing = false, _heartbeat = nil :: RBXScriptConnection?,
+			}, Status)
 
-			local self = setmetatable({ instance = lbl, _lbl = lbl, _glow = glow }, Status)
-			if props.pulse then glow:pulse(Theme.Motion.Pulse) else glow:setActive(true) end
+			-- Respiration phosphore CRT : oscillation du TextStroke (pas de boîte).
+			if props.pulse then self:_startPulse() end
 			return self
+		end
+
+		function Status:_startPulse()
+			if self._pulsing then return end
+			self._pulsing = true
+			local RunService = game:GetService("RunService")
+			local t0 = os.clock()
+			self._heartbeat = RunService.Heartbeat:Connect(function()
+				local phase = (math.sin((os.clock() - t0) * math.pi / Theme.Motion.Pulse) + 1) / 2
+				self._lbl.TextStrokeTransparency = 0.35 + phase * 0.45 -- 0.35..0.8
+			end)
 		end
 
 		function Status:setText(t: string) self._lbl.Text = "\226\150\184 " .. string.upper(t) end
 		function Status:setTone(tone: string)
 			local color = TONES[tone] or Theme.Color.On
+			self._color = color
 			self._lbl.TextColor3 = color
 			self._lbl.TextStrokeColor3 = color
 		end
-		function Status:destroy() self._glow:destroy(); self.instance:Destroy() end
+		function Status:destroy()
+			self._pulsing = false
+			if self._heartbeat then self._heartbeat:Disconnect(); self._heartbeat = nil end
+			self.instance:Destroy()
+		end
 
 		-- --- Stat row ("LABEL           value") ------------------------------
 		type StatProps = { label: string?, value: string?, tone: string?, layoutOrder: number?, parent: Instance? }
@@ -1446,6 +1469,214 @@ local function __build_AmberUI()
 		end
 
 		return Badge
+
+	end
+
+	__loaders[__n_Components_Dropdown] = function(script, require)
+		--!strict
+		-- AmberUI / Components / Dropdown.lua
+		-- =====================================================================
+		-- Menu déroulant CRT ambre (accordéon inline — pas de popup flottant, ce qui
+		-- évite les soucis de ZIndex/clip et reste responsive dans le corps auto-layouté).
+		--
+		-- En-tête cliquable : "LABEL            > VALUE  ▸" (le chevron pivote).
+		-- À l'ouverture, la liste d'options se déplie sous l'en-tête ; chaque option
+		-- est une ligne façon terminal, l'option sélectionnée est marquée "›".
+		--
+		-- Supporte BEAUCOUP d'options (liste scrollable si ça dépasse maxVisible).
+		--
+		-- API :
+		--   local Dropdown = require(...Components.Dropdown)
+		--   local dd = Dropdown.new({
+		--       label = "TARGET", options = {"NEAREST","STRONGEST","LOWEST_HP","RANDOM"},
+		--       value = "NEAREST", onChanged = function(opt, index) ... end, parent = frame })
+		--   dd:get() / dd:set("RANDOM") / dd:setOptions({...}) / dd:open() / dd:close() / dd:destroy()
+		-- =====================================================================
+
+		local Theme = require(script.Parent.Parent.Theme)
+		local Util  = require(script.Parent.Parent.Util)
+
+		local Dropdown = {}
+		Dropdown.__index = Dropdown
+
+		type DropdownProps = {
+			label: string?, options: {string}, value: string?, placeholder: string?,
+			maxVisible: number?, layoutOrder: number?,
+			onChanged: ((option: string, index: number) -> ())?, parent: Instance?,
+		}
+
+		local ROW_H = 26
+
+		function Dropdown.new(props: DropdownProps)
+			local options = props.options or {}
+			local maxVisible = props.maxVisible or 5
+
+			-- Racine auto-size : en-tête + panneau d'options replié.
+			local root = Util.make("Frame", {
+				Name = "AmberDropdown", BackgroundTransparency = 1,
+				Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+				LayoutOrder = props.layoutOrder or 0, ClipsDescendants = true,
+			}, props.parent)
+			local rootList = Util.vlist(4, root)
+			rootList.HorizontalAlignment = Enum.HorizontalAlignment.Left
+
+			-- ---- En-tête cliquable ----
+			local head = Util.make("TextButton", {
+				Name = "Head", Text = "", AutoButtonColor = false, BackgroundColor3 = Theme.Color.Inner,
+				Size = UDim2.new(1, 0, 0, 34), LayoutOrder = 1, BorderSizePixel = 0,
+			}, root) :: TextButton
+			Util.corner(Theme.Shape.CornerSoft, head)
+			Util.paddingXY(12, 0, head)
+			local headStroke = Util.stroke(Theme.Color.Border, Theme.Shape.Stroke, 0, head)
+
+			local label = Util.make("TextLabel", {
+				Name = "Label", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5),
+				Size = UDim2.new(0.5, 0, 1, 0), Font = Theme.Font.Mono, Text = string.upper(props.label or "SELECT"),
+				TextColor3 = Theme.Color.Text, TextSize = Theme.Text.Body, TextXAlignment = Enum.TextXAlignment.Left,
+			}, head)
+			Util.textConstraint(11, 18, label)
+
+			local chevron = Util.make("TextLabel", {
+				Name = "Chevron", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.fromScale(1, 0.5),
+				Size = UDim2.fromOffset(14, 14), Font = Theme.Font.Mono, Text = "\226\150\184", -- ▸
+				TextColor3 = Theme.Color.Header, TextSize = Theme.Text.Body,
+			}, head)
+
+			local valueLbl = Util.make("TextLabel", {
+				Name = "Value", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -22, 0.5, 0),
+				Size = UDim2.new(0.5, -22, 1, 0), Font = Theme.Font.Mono,
+				Text = string.upper(props.value or props.placeholder or "--"),
+				TextColor3 = Theme.Color.Value, TextSize = Theme.Text.Body, TextXAlignment = Enum.TextXAlignment.Right,
+			}, head)
+			Util.textConstraint(11, 18, valueLbl)
+
+			-- ---- Panneau d'options (scrollable si beaucoup d'options) ----
+			local panel = Util.make("ScrollingFrame", {
+				Name = "Options", BackgroundColor3 = Theme.Color.Inner, Size = UDim2.new(1, 0, 0, 0),
+				LayoutOrder = 2, BorderSizePixel = 0, Visible = false, ScrollBarThickness = 3,
+				ScrollBarImageColor3 = Theme.Color.Primary, ScrollBarImageTransparency = 0.3,
+				CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ClipsDescendants = true,
+			}, root) :: ScrollingFrame
+			Util.corner(Theme.Shape.CornerSoft, panel)
+			Util.stroke(Theme.Color.BorderIn, Theme.Shape.Stroke, 0, panel)
+			local plist = Util.vlist(0, panel)
+			plist.HorizontalAlignment = Enum.HorizontalAlignment.Left
+
+			local self = setmetatable({
+				instance = root, _head = head, _headStroke = headStroke, _valueLbl = valueLbl,
+				_chevron = chevron, _panel = panel, _plist = plist,
+				_options = options, _value = props.value, _open = false, _maxVisible = maxVisible,
+				_onChanged = props.onChanged, _optionRows = {} :: {TextButton}, _conns = {} :: {any},
+			}, Dropdown)
+
+			self:_buildOptions()
+
+			-- Ouvre/ferme au clic sur l'en-tête.
+			table.insert(self._conns, head.Activated:Connect(function()
+				if self._open then self:close() else self:open() end
+			end))
+			table.insert(self._conns, Util.hover(head,
+				function() Util.tween(headStroke, { Color = Theme.Color.Primary }, Theme.Motion.Fast) end,
+				function() if not self._open then Util.tween(headStroke, { Color = Theme.Color.Border }, Theme.Motion.Fast) end end
+			))
+
+			return self
+		end
+
+		-- Reconstruit les lignes d'options.
+		function Dropdown:_buildOptions()
+			for _, r in ipairs(self._optionRows) do r:Destroy() end
+			table.clear(self._optionRows)
+
+			for i, opt in ipairs(self._options) do
+				local selected = (opt == self._value)
+				local row = Util.make("TextButton", {
+					Name = "Opt_" .. opt, Text = "", AutoButtonColor = false, BackgroundColor3 = Theme.Color.Primary,
+					BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, ROW_H), LayoutOrder = i, BorderSizePixel = 0,
+				}, self._panel) :: TextButton
+				Util.paddingXY(12, 0, row)
+
+				local marker = Util.make("TextLabel", {
+					Name = "Marker", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5),
+					Size = UDim2.fromOffset(14, ROW_H), Font = Theme.Font.Mono, Text = selected and "\226\128\186" or "", -- ›
+					TextColor3 = Theme.Color.Primary, TextSize = Theme.Text.Body, TextXAlignment = Enum.TextXAlignment.Left,
+				}, row)
+				local txt = Util.make("TextLabel", {
+					Name = "Text", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 16, 0.5, 0),
+					Size = UDim2.new(1, -16, 1, 0), Font = Theme.Font.Mono, Text = string.upper(opt),
+					TextColor3 = selected and Theme.Color.Value or Theme.Color.Text, TextSize = Theme.Text.Body,
+					TextXAlignment = Enum.TextXAlignment.Left,
+				}, row)
+				Util.textConstraint(11, 18, txt)
+
+				table.insert(self._conns, row.Activated:Connect(function()
+					self:set(opt)
+					self:close()
+				end))
+				table.insert(self._conns, Util.hover(row,
+					function() Util.tween(row, { BackgroundTransparency = 0.85 }, Theme.Motion.Fast) end,
+					function() Util.tween(row, { BackgroundTransparency = 1 }, Theme.Motion.Fast) end
+				))
+				self._optionRows[i] = row
+			end
+		end
+
+		-- Hauteur cible du panneau (borne à maxVisible lignes -> scroll au-delà).
+		function Dropdown:_panelHeight(): number
+			local n = math.min(#self._options, self._maxVisible)
+			return n * ROW_H
+		end
+
+		function Dropdown:open()
+			if self._open then return end
+			self._open = true
+			self._panel.Visible = true
+			self._panel.Size = UDim2.new(1, 0, 0, 0)
+			Util.tween(self._panel, { Size = UDim2.new(1, 0, 0, self:_panelHeight()) }, Theme.Motion.Normal)
+			Util.tween(self._chevron, { Rotation = 90 }, Theme.Motion.Normal)
+			Util.tween(self._headStroke, { Color = Theme.Color.Primary }, Theme.Motion.Fast)
+		end
+
+		function Dropdown:close()
+			if not self._open then return end
+			self._open = false
+			local t = Util.tween(self._panel, { Size = UDim2.new(1, 0, 0, 0) }, Theme.Motion.Normal)
+			Util.tween(self._chevron, { Rotation = 0 }, Theme.Motion.Normal)
+			Util.tween(self._headStroke, { Color = Theme.Color.Border }, Theme.Motion.Fast)
+			t.Completed:Once(function()
+				if not self._open then self._panel.Visible = false end
+			end)
+		end
+
+		function Dropdown:get(): string? return self._value end
+
+		function Dropdown:set(option: string, silent: boolean?)
+			local index = table.find(self._options, option)
+			if not index then return end
+			self._value = option
+			self._valueLbl.Text = string.upper(option)
+			self:_buildOptions() -- rafraîchit le marqueur de sélection
+			if not silent and self._onChanged then self._onChanged(option, index) end
+		end
+
+		function Dropdown:setOptions(options: {string})
+			self._options = options
+			if self._value and not table.find(options, self._value) then self._value = nil end
+			self:_buildOptions()
+			if self._open then
+				self._panel.Size = UDim2.new(1, 0, 0, self:_panelHeight())
+			end
+		end
+
+		function Dropdown:destroy()
+			for _, c in ipairs(self._conns) do
+				if typeof(c) == "RBXScriptConnection" then c:Disconnect()
+				elseif typeof(c) == "function" then c() end
+			end
+			self.instance:Destroy()
+		end
+
+		return Dropdown
 
 	end
 
@@ -1576,17 +1807,18 @@ local function __build_AmberUI()
 		-- AmberUI / Components / Terminal.lua
 		-- =====================================================================
 		-- COMPOSANT SIGNATURE du concept "04 Amber Retro".
-		-- Reproduit le panneau `.amber` complet : cadre double (bordure externe
-		-- #3a2c05 + cadre interne #241a03), gros halo ambre diffus (box-shadow 50px),
-		-- SCANLINES CRT en overlay, en-tête façon terminal ("AUTOFARM.EXE  SES#... ▸ uptime").
-		-- Draggable (souris + tactile). Corps scrollable auto-layouté.
+		-- Reproduit le panneau `.amber` : cadre ambre (#3a2c05), fond CRT (#0d0a02),
+		-- gros halo ambre diffus (box-shadow 50px), SCANLINES CRT en overlay,
+		-- en-tête terminal ("AUTOFARM.EXE      SES#... ▸ uptime").
 		--
-		-- Responsive : Scale + bornes px + ratio verrouillé.
+		-- COMME LE SITE : le panneau est en PAYSAGE et ÉPOUSE SON CONTENU
+		-- (AutomaticSize.Y) — plus de grande zone vide en bas. Largeur fixe bornée.
+		-- Draggable par l'en-tête (souris + tactile).
 		--
 		-- API :
 		--   local Terminal = require(...Components.Terminal)
 		--   local term = Terminal.new({ title = "AUTOFARM.EXE", tag = "SES#4821 ▸ 02:14:37", parent = screenGui })
-		--   term.body -> ScrollingFrame (auto vlist)
+		--   term.body -> Frame auto-layouté où empiler nav + pages
 		--   term:setTag("...") / term:destroy()
 		-- =====================================================================
 
@@ -1600,72 +1832,82 @@ local function __build_AmberUI()
 		Terminal.__index = Terminal
 
 		type TerminalProps = {
-			title: string?, tag: string?, size: UDim2?, maxWidth: number?,
+			title: string?, tag: string?, width: number?, position: UDim2?,
 			parent: Instance?, draggable: boolean?,
 		}
 
 		function Terminal.new(props: TerminalProps)
-			-- Bordure externe.
+			local width = props.width or 560
+
+			-- Racine : largeur fixe bornée, hauteur qui suit le contenu (comme le site).
 			local root = Util.make("Frame", {
 				Name = "AmberTerminal", BackgroundColor3 = Theme.Color.Panel,
-				AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
-				Size = props.size or UDim2.fromScale(0.42, 0.62), BorderSizePixel = 0,
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = props.position or UDim2.fromScale(0.5, 0.5),
+				Size = UDim2.fromOffset(width, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				BorderSizePixel = 0,
 			}, props.parent)
 			Util.corner(Theme.Shape.Corner, root)
 			Util.stroke(Theme.Color.Border, Theme.Shape.Stroke, 0, root)
-			Util.sizeConstraint(Vector2.new(260, 230), Vector2.new(props.maxWidth or 440, 720), root)
-			local ratio = Util.aspect(0.7, root)
-			ratio.DominantAxis = Enum.DominantAxis.Height
+			-- Borne la largeur pour rester lisible sur tout écran (responsive).
+			Util.sizeConstraint(Vector2.new(300, 0), Vector2.new(width, math.huge), root)
 
-			-- Gros halo ambre diffus (le box-shadow:0 0 50px du .amber).
+			-- Gros halo ambre diffus (box-shadow:0 0 50px du .amber), posé sur root
+			-- (pas de UIListLayout dessus -> pas capturé comme item).
 			local glow = Glow.attach(root, { color = Theme.Color.Primary, rest = Theme.Glow.Rest, active = Theme.Glow.Active, spread = Theme.Glow.Spread, stroke = false })
 			glow:setActive(true)
 
-			-- Cadre interne (.amber-in) : padding + bordure interne.
+			-- Scanlines par-dessus tout (sur root, non cliquables).
+			Scanlines.attach(root, { flicker = Theme.Scanline.Flicker })
+
+			-- Cadre interne (.amber-in) : padding + layout. Auto-size vertical.
 			local inner = Util.make("Frame", {
-				Name = "Inner", BackgroundColor3 = Theme.Color.Inner, Size = UDim2.fromScale(1, 1),
-				BorderSizePixel = 0, ClipsDescendants = true,
+				Name = "Inner", BackgroundColor3 = Theme.Color.Inner,
+				Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+				BorderSizePixel = 0,
 			}, root)
 			Util.corner(Theme.Shape.CornerSoft, inner)
 			Util.stroke(Theme.Color.BorderIn, Theme.Shape.Stroke, 0, inner)
-			Util.padding(Theme.Space.MD, inner)
-			Util.vlist(Theme.Space.SM, inner)
-
-			-- Scanlines par-dessus tout : posées sur `root` (qui n'a PAS de UIListLayout)
-			-- pour ne pas être capturées comme item de liste. ZIndex élevé -> au-dessus.
-			Scanlines.attach(root, { flicker = Theme.Scanline.Flicker })
+			Util.padding(Theme.Space.LG, inner)
+			local ilist = Util.vlist(Theme.Space.MD, inner)
+			ilist.HorizontalAlignment = Enum.HorizontalAlignment.Left
 
 			-- ---- En-tête terminal (.amber-hd) ----
 			local header = Util.make("Frame", {
-				Name = "Header", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 26), LayoutOrder = 1, ZIndex = 5,
+				Name = "Header", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 22), LayoutOrder = 1, ZIndex = 5,
 			}, inner)
 			local title = Util.make("TextLabel", {
 				Name = "Title", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5),
 				Size = UDim2.new(0.5, 0, 1, 0), Font = Theme.Font.Mono, Text = props.title or "AUTOFARM.EXE",
-				TextColor3 = Theme.Color.Header, TextSize = Theme.Text.Body, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 5,
+				TextColor3 = Theme.Color.Header, TextSize = Theme.Text.Title, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 6,
 			}, header)
-			Util.textConstraint(11, 17, title)
+			Util.textConstraint(12, 19, title)
 			local tag = Util.make("TextLabel", {
 				Name = "Tag", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.fromScale(1, 0.5),
 				Size = UDim2.new(0.5, 0, 1, 0), Font = Theme.Font.Mono, Text = props.tag or "SES#4821 \226\150\184 02:14:37",
-				TextColor3 = Theme.Color.Header, TextSize = Theme.Text.Small, TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 5,
+				TextColor3 = Theme.Color.Header, TextSize = Theme.Text.Small, TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 6,
 			}, header)
-			Util.textConstraint(9, 14, tag)
+			Util.textConstraint(10, 15, tag)
 
 			-- Séparateur pointillé sous l'en-tête (border-bottom dashed).
-			local sep = Util.make("TextLabel", {
-				Name = "HeaderSep", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 6), LayoutOrder = 2, ZIndex = 5,
-				Font = Theme.Font.Mono, Text = string.rep("-", 200), TextColor3 = Theme.Color.Border, TextSize = 12,
-				TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, ClipsDescendants = true,
+			local sep = Util.make("Frame", {
+				Name = "HeaderSep", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 8), LayoutOrder = 2, ZIndex = 5,
+				ClipsDescendants = true,
 			}, inner)
+			Util.make("TextLabel", {
+				BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1),
+				Font = Theme.Font.Mono, Text = string.rep("- ", 120), TextColor3 = Theme.Color.Border, TextSize = 13,
+				TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Center,
+				TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 5,
+			}, sep)
 
-			-- ---- Corps scrollable ----
-			local body = Util.make("ScrollingFrame", {
-				Name = "Body", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, -40), LayoutOrder = 3,
-				BorderSizePixel = 0, CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
-				ScrollBarThickness = 3, ScrollBarImageColor3 = Theme.Color.Primary, ScrollBarImageTransparency = 0.3, ZIndex = 5,
-			}, inner) :: ScrollingFrame
-			local blist = Util.vlist(Theme.Space.SM, body)
+			-- ---- Corps : Frame auto-layouté qui hug le contenu (comme le site) ----
+			local body = Util.make("Frame", {
+				Name = "Body", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 3, BorderSizePixel = 0, ZIndex = 5,
+			}, inner)
+			local blist = Util.vlist(Theme.Space.MD, body)
 			blist.HorizontalAlignment = Enum.HorizontalAlignment.Left
 
 			local self = setmetatable({
@@ -1678,7 +1920,7 @@ local function __build_AmberUI()
 				local dragStart: Vector2? = nil
 				local startPos: UDim2? = nil
 				local dragInput: InputObject? = nil
-				-- On rend le header cliquable pour capter les inputs.
+
 				local grip = Util.make("TextButton", {
 					Name = "Grip", Text = "", AutoButtonColor = false, BackgroundTransparency = 1,
 					Size = UDim2.fromScale(1, 1), ZIndex = 4,
