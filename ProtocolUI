@@ -1,0 +1,1885 @@
+-- ProtocolUI — bundle autonome généré par build.py. NE PAS ÉDITER À LA MAIN.
+-- Source multi-fichiers : https://github.com/USER/REPO
+-- =====================================================================
+-- Runtime : faux arbre `script` + require() par nœud (avec cache).
+-- Reproduit le comportement des ModuleScripts Roblox dans une seule source.
+-- =====================================================================
+local function __build_ProtocolUI()
+	local __cache = {}
+	local __loaders = {}
+
+	-- Nœud d'arbre : indexe ses enfants par nom, expose .Parent.
+	local __nodeMeta = {}
+	__nodeMeta.__index = function(self, key)
+		if key == "Parent" then return rawget(self, "__parent") end
+		local children = rawget(self, "__children")
+		local child = children and children[key]
+		if child then return child end
+		error("[ProtocolUI] noeud introuvable: " .. tostring(key), 2)
+	end
+
+	local function __node(name, parent)
+		local n = setmetatable(
+			{ __name = name, __parent = parent, __children = {} },
+			__nodeMeta
+		)
+		if parent then
+			rawget(parent, "__children")[name] = n
+		end
+		return n
+	end
+
+	local function __require(node)
+		if __cache[node] ~= nil then return __cache[node] end
+		local loader = __loaders[node]
+		if not loader then
+			error("[ProtocolUI] module non charge: " .. tostring(rawget(node, "__name")), 2)
+		end
+		local result = loader(node, __require)
+		__cache[node] = result
+		return result
+	end
+
+	-- ---- Arbre des modules ----
+	local __root = __node("ProtocolUI")
+	local __n_Theme = __node("Theme", __root)
+	local __n_Util = __node("Util", __root)
+	local __n_Glow = __node("Glow", __root)
+	local __n_Components = __node("Components", __root)
+	local __n_Components_Button = __node("Button", __n_Components)
+	local __n_Components_TextInput = __node("TextInput", __n_Components)
+	local __n_Components_Toggle = __node("Toggle", __n_Components)
+	local __n_Components_Slider = __node("Slider", __n_Components)
+	local __n_Components_Checkbox = __node("Checkbox", __n_Components)
+	local __n_Components_Card = __node("Card", __n_Components)
+	local __n_Components_Nav = __node("Nav", __n_Components)
+	local __n_Components_Badge = __node("Badge", __n_Components)
+	local __n_Components_Modal = __node("Modal", __n_Components)
+	local __n_Components_Window = __node("Window", __n_Components)
+
+	-- ---- Loaders (une closure par module = un ModuleScript) ----
+	__loaders[__root] = function(script, require)
+		--!strict
+		-- ProtocolUI / init.lua
+		-- =====================================================================
+		-- Point d'entrée de la library "07 Protocol". Place ce dossier comme
+		-- ModuleScript nommé "ProtocolUI" (avec init.lua) dans ReplicatedStorage.
+		-- Structure attendue :
+		--   ProtocolUI/            (ModuleScript = ce init.lua)
+		--     Theme, Util, Glow    (ModuleScripts enfants)
+		--     Components/          (Folder ou ModuleScript conteneur)
+		--       Button, TextInput, Toggle, Slider, Checkbox,
+		--       Card, Nav, Badge, Modal, Window
+		--
+		-- Réutilisation :
+		--   local UI = require(ReplicatedStorage.ProtocolUI)
+		--   local win = UI.Window.new({ parent = screenGui })
+		--   UI.Button.new({ text = "GO", parent = win.body })
+		--   -- accès direct au thème : UI.Theme.Color.Primary
+		-- =====================================================================
+
+		local Components = script.Components
+
+		local ProtocolUI = {
+			Theme = require(script.Theme),
+			Util  = require(script.Util),
+			Glow  = require(script.Glow),
+
+			Button    = require(Components.Button),
+			TextInput = require(Components.TextInput),
+			Toggle    = require(Components.Toggle),
+			Slider    = require(Components.Slider),
+			Checkbox  = require(Components.Checkbox),
+			Card      = require(Components.Card),
+			Nav       = require(Components.Nav),
+			Badge     = require(Components.Badge),
+			Modal     = require(Components.Modal),
+			Window    = require(Components.Window),
+		}
+
+		return ProtocolUI
+
+	end
+
+	__loaders[__n_Theme] = function(script, require)
+		--!strict
+		-- ProtocolUI / Theme.lua
+		-- =====================================================================
+		-- Thème centralisé du concept "07 Protocol" (brutaliste, angles nets, rouge).
+		-- Toutes les valeurs Color3 sont extraites À L'IDENTIQUE du CSS d'origine
+		-- (autofarm-cheat-concepts.html, bloc `.proto*`). Ne pas approximer :
+		-- modifie ici et toute la library reste cohérente.
+		--
+		-- Réutilisation :
+		--   local Theme = require(path.to.ProtocolUI.Theme)
+		--   frame.BackgroundColor3 = Theme.Color.Panel
+		-- =====================================================================
+
+		-- Helper : convertit un hex "#rrggbb" en Color3 (fidélité exacte au CSS).
+		local function hex(h: string): Color3
+			return Color3.fromHex(h)
+		end
+
+		local Theme = {}
+
+		-- ---------------------------------------------------------------------
+		-- PALETTE — valeurs hex reprises telles quelles du CSS `.proto`
+		-- ---------------------------------------------------------------------
+		Theme.Color = {
+			-- Fonds
+			Stage     = hex("0c0708"), -- .st-proto  fond de scène
+			Panel     = hex("0f0a0b"), -- .proto      corps du panneau
+			Header    = hex("1a0c0e"), -- .proto-top  barre de titre / éléments surélevés
+			Row       = hex("0f0a0b"), -- lignes d'option (même fond que panel)
+
+			-- Bordures
+			Border    = hex("3a1518"), -- .proto      bordure principale
+			Divider   = hex("1f1011"), -- .proto-opt  séparateur de ligne
+
+			-- Rouges (accent primaire du concept)
+			Primary   = hex("dc2626"), -- .proto-nav.on / .proto-sq.on   rouge plein
+			Accent    = hex("f87171"), -- .proto-top .t / .proto-v       rouge clair (texte accent)
+			Deep      = hex("7f1d1d"), -- .proto-top .id                 rouge sombre (labels discrets)
+			NavMuted  = hex("9b5a5e"), -- .proto-nav                     onglet inactif
+
+			-- Textes
+			Text      = hex("e5c5c7"), -- .proto-opt   texte principal (rosé désaturé)
+			TextDim   = hex("9b5a5e"), -- texte secondaire
+			OnPrimary = hex("0f0a0b"), -- texte posé sur un fond rouge plein
+
+			-- États
+			Disabled  = hex("4a3234"), -- dérivé cohérent pour l'état désactivé
+			Danger    = hex("dc2626"),
+			Success   = hex("22c55e"), -- réutilisé du set global (status ON)
+		}
+
+		-- ---------------------------------------------------------------------
+		-- GLOW — le halo rouge signature (box-shadow:0 0 10px rgba(220,38,38,.6))
+		-- ---------------------------------------------------------------------
+		Theme.Glow = {
+			Color       = Theme.Color.Primary,
+			-- Transparency de base / au repos et en surbrillance (0 = opaque, 1 = invisible)
+			Rest        = 0.55,
+			Active      = 0.15,
+			-- Taille du halo relative à l'élément (padding autour, en pixels)
+			Spread      = 18,
+		}
+
+		-- ---------------------------------------------------------------------
+		-- TYPOGRAPHIE — JetBrains Mono => Enum.Font.Code (mono la plus proche sur Roblox)
+		-- ---------------------------------------------------------------------
+		Theme.Font = {
+			Mono     = Enum.Font.Code,        -- corps monospace
+			MonoBold = Enum.Font.Code,        -- Roblox n'a pas de Code-Bold ; on joue sur la taille/couleur
+			Display  = Enum.Font.GothamBold,  -- titres si besoin d'un contraste net
+		}
+
+		Theme.Text = {
+			-- Tailles en pixels de référence (ScreenGui à ~1080p). Les composants
+			-- utilisent aussi UITextSizeConstraint pour rester lisibles en scale.
+			Small  = 12,
+			Body   = 14,
+			Title  = 16,
+			Big    = 20,
+			-- Espacement des lettres pour l'ambiance "protocole" (uppercase nav).
+			Tracking = 1, -- px, appliqué via LetterSpacing quand pertinent
+			StrokeTransparency = 1, -- pas de TextStroke par défaut (look net)
+		}
+
+		-- ---------------------------------------------------------------------
+		-- FORMES — angles NETS = signature brutaliste : radius quasi nul.
+		-- ---------------------------------------------------------------------
+		Theme.Shape = {
+			Corner       = UDim.new(0, 0),  -- angles droits partout (identité du concept)
+			CornerSoft   = UDim.new(0, 2),  -- micro-radius optionnel pour boutons
+			Stroke       = 1,               -- épaisseur de bordure (1px comme le CSS)
+			StrokeThick  = 2,
+		}
+
+		-- ---------------------------------------------------------------------
+		-- ESPACEMENTS — dérivés du CSS (padding 14-16px, gaps ~9px)
+		-- ---------------------------------------------------------------------
+		Theme.Space = {
+			XS = 4,
+			SM = 8,
+			MD = 12,
+			LG = 16,
+			XL = 24,
+			RowPad = 9,  -- .proto-opt padding vertical
+			PanelPad = 15,
+		}
+
+		-- Durées d'animation communes (secondes) — pour cohérence des tweens.
+		Theme.Motion = {
+			Fast   = 0.12,
+			Normal = 0.2,   -- transition CSS de référence (.2s)
+			Slow   = 0.35,
+			Pulse  = 1.1,   -- respiration du glow
+		}
+
+		return Theme
+
+	end
+
+	__loaders[__n_Util] = function(script, require)
+		--!strict
+		-- ProtocolUI / Util.lua
+		-- =====================================================================
+		-- Helpers partagés par tous les composants : création d'Instances,
+		-- tweens, gestion responsive (Scale + contraintes), détection tactile.
+		-- Aucune dépendance au thème -> réutilisable tel quel dans Amber aussi.
+		--
+		-- Réutilisation :
+		--   local Util = require(path.to.ProtocolUI.Util)
+		--   local f = Util.make("Frame", { BackgroundColor3 = ... }, parent)
+		-- =====================================================================
+
+		local TweenService = game:GetService("TweenService")
+		local UserInputService = game:GetService("UserInputService")
+
+		local Util = {}
+
+		-- ---------------------------------------------------------------------
+		-- make(className, props, parent, children)
+		-- Crée une Instance, applique les props, parente d'éventuels enfants.
+		-- children peut contenir des Instances déjà créées (contraintes, layout…).
+		-- ---------------------------------------------------------------------
+		function Util.make(className: string, props: {[string]: any}?, parent: Instance?, children: {Instance}?): Instance
+			local inst = Instance.new(className)
+			if props then
+				for k, v in pairs(props) do
+					(inst :: any)[k] = v
+				end
+			end
+			if children then
+				for _, c in ipairs(children) do
+					c.Parent = inst
+				end
+			end
+			if parent then
+				inst.Parent = parent
+			end
+			return inst
+		end
+
+		-- ---------------------------------------------------------------------
+		-- tween(inst, props, duration?, style?, direction?)
+		-- Raccourci TweenService avec valeurs par défaut douces. Retourne le Tween.
+		-- ---------------------------------------------------------------------
+		function Util.tween(inst: Instance, props: {[string]: any}, duration: number?, style: Enum.EasingStyle?, direction: Enum.EasingDirection?): Tween
+			local info = TweenInfo.new(
+				duration or 0.2,
+				style or Enum.EasingStyle.Quad,
+				direction or Enum.EasingDirection.Out
+			)
+			local t = TweenService:Create(inst, info, props)
+			t:Play()
+			return t
+		end
+
+		-- ---------------------------------------------------------------------
+		-- corner / stroke / padding / listLayout : fabriques d'objets d'UI courants.
+		-- ---------------------------------------------------------------------
+		function Util.corner(radius: UDim, parent: Instance?): UICorner
+			return Util.make("UICorner", { CornerRadius = radius }, parent) :: UICorner
+		end
+
+		function Util.stroke(color: Color3, thickness: number?, transparency: number?, parent: Instance?): UIStroke
+			return Util.make("UIStroke", {
+				Color = color,
+				Thickness = thickness or 1,
+				Transparency = transparency or 0,
+				ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+			}, parent) :: UIStroke
+		end
+
+		function Util.padding(all: number, parent: Instance?): UIPadding
+			local u = UDim.new(0, all)
+			return Util.make("UIPadding", {
+				PaddingTop = u, PaddingBottom = u, PaddingLeft = u, PaddingRight = u,
+			}, parent) :: UIPadding
+		end
+
+		function Util.paddingXY(x: number, y: number, parent: Instance?): UIPadding
+			return Util.make("UIPadding", {
+				PaddingLeft = UDim.new(0, x), PaddingRight = UDim.new(0, x),
+				PaddingTop = UDim.new(0, y), PaddingBottom = UDim.new(0, y),
+			}, parent) :: UIPadding
+		end
+
+		function Util.vlist(gap: number, parent: Instance?, align: Enum.HorizontalAlignment?): UIListLayout
+			return Util.make("UIListLayout", {
+				FillDirection = Enum.FillDirection.Vertical,
+				SortOrder = Enum.SortOrder.LayoutOrder,
+				Padding = UDim.new(0, gap),
+				HorizontalAlignment = align or Enum.HorizontalAlignment.Left,
+			}, parent) :: UIListLayout
+		end
+
+		function Util.hlist(gap: number, parent: Instance?, align: Enum.VerticalAlignment?): UIListLayout
+			return Util.make("UIListLayout", {
+				FillDirection = Enum.FillDirection.Horizontal,
+				SortOrder = Enum.SortOrder.LayoutOrder,
+				Padding = UDim.new(0, gap),
+				VerticalAlignment = align or Enum.VerticalAlignment.Center,
+			}, parent) :: UIListLayout
+		end
+
+		-- ---------------------------------------------------------------------
+		-- RESPONSIVE
+		-- textConstraint : garde le texte lisible quand l'UI est mise à l'échelle.
+		-- aspect : verrouille un ratio (utile pour cartes/fenêtres sur mobile).
+		-- sizeConstraint : borne min/max en pixels pour éviter l'extrême.
+		-- ---------------------------------------------------------------------
+		function Util.textConstraint(min: number, max: number, parent: Instance?): UITextSizeConstraint
+			return Util.make("UITextSizeConstraint", {
+				MinTextSize = min, MaxTextSize = max,
+			}, parent) :: UITextSizeConstraint
+		end
+
+		function Util.aspect(ratio: number, parent: Instance?): UIAspectRatioConstraint
+			return Util.make("UIAspectRatioConstraint", {
+				AspectRatio = ratio,
+				DominantAxis = Enum.DominantAxis.Width,
+			}, parent) :: UIAspectRatioConstraint
+		end
+
+		function Util.sizeConstraint(minPx: Vector2, maxPx: Vector2, parent: Instance?): UISizeConstraint
+			return Util.make("UISizeConstraint", {
+				MinSize = minPx, MaxSize = maxPx,
+			}, parent) :: UISizeConstraint
+		end
+
+		-- ---------------------------------------------------------------------
+		-- isTouch() : true si l'appareil est principalement tactile (mobile Roblox).
+		-- Les composants l'utilisent pour agrandir les zones cliquables.
+		-- ---------------------------------------------------------------------
+		function Util.isTouch(): boolean
+			return UserInputService.TouchEnabled and not UserInputService.MouseEnabled
+		end
+
+		-- ---------------------------------------------------------------------
+		-- debounce(fn, delay) : renvoie une fonction throttlée (anti-spam d'input).
+		-- ---------------------------------------------------------------------
+		function Util.debounce(fn: (...any) -> (), delay: number): (...any) -> ()
+			local ready = true
+			return function(...)
+				if not ready then return end
+				ready = false
+				fn(...)
+				task.delay(delay, function() ready = true end)
+			end
+		end
+
+		-- ---------------------------------------------------------------------
+		-- hover(guiObject, onEnter, onLeave)
+		-- Branche à la fois souris (MouseEnter/Leave) ET tactile (press/release)
+		-- pour que les états hover marchent sur PC comme sur mobile.
+		-- Retourne une fonction de déconnexion.
+		-- ---------------------------------------------------------------------
+		function Util.hover(obj: GuiObject, onEnter: () -> (), onLeave: () -> ()): () -> ()
+			local conns: {RBXScriptConnection} = {}
+			table.insert(conns, obj.MouseEnter:Connect(onEnter))
+			table.insert(conns, obj.MouseLeave:Connect(onLeave))
+			-- Sur tactile : InputBegan/Ended simulent le survol au toucher.
+			table.insert(conns, obj.InputBegan:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.Touch then onEnter() end
+			end))
+			table.insert(conns, obj.InputEnded:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.Touch then onLeave() end
+			end))
+			return function()
+				for _, c in ipairs(conns) do c:Disconnect() end
+			end
+		end
+
+		return Util
+
+	end
+
+	__loaders[__n_Glow] = function(script, require)
+		--!strict
+		-- ProtocolUI / Glow.lua
+		-- =====================================================================
+		-- Le halo lumineux "réel" du concept. Le CSS d'origine utilise
+		--   box-shadow:0 0 10px rgba(220,38,38,.6)
+		-- que UIStroke seul ne reproduit pas (pas de diffusion). On combine donc :
+		--   1) un ImageLabel avec une texture radiale floutée (vrai halo diffus)
+		--   2) un UIStroke à Transparency animée (le liseré net brutaliste)
+		--
+		-- La texture radiale utilisée est l'asset Roblox standard de glow radial.
+		-- Si tu as ta propre texture, remplace GLOW_TEXTURE ci-dessous.
+		--
+		-- Réutilisation :
+		--   local Glow = require(path.to.ProtocolUI.Glow)
+		--   local halo = Glow.attach(monBouton, { color = Theme.Color.Primary })
+		--   halo:setActive(true)   -- intensifie (hover/on)
+		--   halo:pulse()           -- respiration continue (état "live")
+		-- =====================================================================
+
+		local RunService = game:GetService("RunService")
+		local Util = require(script.Parent.Util)
+
+		-- Texture radiale floue standard (halo doux). Asset public Roblox.
+		local GLOW_TEXTURE = "rbxassetid://5028857084" -- radial glow (soft)
+
+		local Glow = {}
+		Glow.__index = Glow
+
+		type GlowConfig = {
+			color: Color3?,
+			rest: number?,     -- transparency au repos (0..1)
+			active: number?,   -- transparency actif
+			spread: number?,   -- débordement du halo en px
+			stroke: boolean?,  -- ajouter aussi un UIStroke net ? (défaut true)
+		}
+
+		-- attach(target, config) : pose un halo DERRIÈRE `target`.
+		-- Le halo est parenté À L'INTÉRIEUR de la cible, centré avec un inset négatif
+		-- (Size = 1 + spread des deux côtés). Il suit donc automatiquement la
+		-- taille/position de la cible (aucun binding manuel = responsive + performant),
+		-- et n'est PAS capturé par un éventuel UIListLayout du parent.
+		-- Sous ZIndexBehavior.Sibling, un ZIndex inférieur le rend derrière la cible.
+		function Glow.attach(target: GuiObject, config: GlowConfig?)
+			config = config or {}
+			local color = config.color or Color3.fromRGB(220, 38, 38)
+			local rest = config.rest or 0.55
+			local active = config.active or 0.15
+			local spread = config.spread or 18
+
+			-- Halo diffus (ImageLabel radial) enfant de la cible, débordant via inset.
+			local halo = Util.make("ImageLabel", {
+				Name = "Glow",
+				BackgroundTransparency = 1,
+				Image = GLOW_TEXTURE,
+				ImageColor3 = color,
+				ImageTransparency = rest,
+				ZIndex = math.max(target.ZIndex - 1, 0),
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(0.5, 0.5),
+				Size = UDim2.new(1, spread * 2, 1, spread * 2),
+				Active = false,
+				Selectable = false,
+			}, target) :: ImageLabel
+
+			-- Liseré net optionnel (le côté brutaliste).
+			local stroke: UIStroke? = nil
+			if config.stroke ~= false then
+				stroke = Util.stroke(color, 1, rest, target)
+			end
+
+			local self = setmetatable({
+				halo = halo,
+				stroke = stroke,
+				_color = color,
+				_rest = rest,
+				_active = active,
+				_pulsing = false,
+				_conns = {},
+				_heartbeat = nil :: RBXScriptConnection?,
+			}, Glow)
+
+			return self
+		end
+
+		-- setActive(on) : passe le halo entre repos et surbrillance (tween doux).
+		function Glow:setActive(on: boolean)
+			local target = on and self._active or self._rest
+			Util.tween(self.halo, { ImageTransparency = target }, 0.2)
+			if self.stroke then
+				Util.tween(self.stroke, { Transparency = target }, 0.2)
+			end
+		end
+
+		-- pulse() : respiration continue (RunService.Heartbeat, une seule boucle).
+		-- Idéal pour un status "live"/"injected". Appeler stop() pour arrêter.
+		function Glow:pulse(speed: number?)
+			if self._pulsing then return end
+			self._pulsing = true
+			local sp = speed or 1.1
+			local t0 = os.clock()
+			self._heartbeat = RunService.Heartbeat:Connect(function()
+				local phase = (math.sin((os.clock() - t0) * math.pi / sp) + 1) / 2 -- 0..1
+				local val = self._rest + (self._active - self._rest) * phase
+				self.halo.ImageTransparency = val
+				if self.stroke then self.stroke.Transparency = val end
+			end)
+		end
+
+		-- stop() : arrête la pulsation et revient au repos.
+		function Glow:stop()
+			self._pulsing = false
+			if self._heartbeat then
+				self._heartbeat:Disconnect()
+				self._heartbeat = nil
+			end
+			self:setActive(false)
+		end
+
+		-- destroy() : nettoyage complet (connexions + instances).
+		function Glow:destroy()
+			self:stop()
+			for _, c in ipairs(self._conns) do c:Disconnect() end
+			self.halo:Destroy()
+		end
+
+		return Glow
+
+	end
+
+	__loaders[__n_Components_Button] = function(script, require)
+		--!strict
+		-- ProtocolUI / Components / Button.lua
+		-- =====================================================================
+		-- Bouton brutaliste angles nets. Variantes : primary | secondary | ghost | disabled.
+		-- États gérés : Hover, Pressed, Focus (via Util.hover + Input events + TweenService).
+		-- Glow rouge réel sur la variante primary (halo diffus + liseré).
+		--
+		-- API :
+		--   local Button = require(...Components.Button)
+		--   local btn = Button.new({
+		--       text = "EXECUTE",
+		--       variant = "primary",       -- "primary"|"secondary"|"ghost"|"disabled"
+		--       size = UDim2.fromScale(1, 0),   -- largeur pleine, hauteur auto (voir minHeight)
+		--       onClick = function() print("go") end,
+		--       parent = someFrame,
+		--   })
+		--   btn.instance      -> le TextButton racine
+		--   btn:setEnabled(false)
+		--   btn:setText("...")
+		--   btn:destroy()
+		-- =====================================================================
+
+		local Theme = require(script.Parent.Parent.Theme)
+		local Util  = require(script.Parent.Parent.Util)
+		local Glow  = require(script.Parent.Parent.Glow)
+
+		local Button = {}
+		Button.__index = Button
+
+		type ButtonProps = {
+			text: string?,
+			variant: string?,
+			size: UDim2?,
+			minHeight: number?,
+			layoutOrder: number?,
+			onClick: (() -> ())?,
+			parent: Instance?,
+		}
+
+		-- Table de style par variante (couleurs issues du Theme).
+		local function styleFor(variant: string)
+			if variant == "primary" then
+				return { bg = Theme.Color.Primary, text = Theme.Color.OnPrimary, border = Theme.Color.Primary, glow = true }
+			elseif variant == "secondary" then
+				return { bg = Theme.Color.Header, text = Theme.Color.Accent, border = Theme.Color.Border, glow = false }
+			elseif variant == "ghost" then
+				return { bg = nil, text = Theme.Color.NavMuted, border = Theme.Color.Divider, glow = false }
+			else -- disabled
+				return { bg = Theme.Color.Header, text = Theme.Color.Disabled, border = Theme.Color.Divider, glow = false }
+			end
+		end
+
+		function Button.new(props: ButtonProps)
+			local variant = props.variant or "primary"
+			local style = styleFor(variant)
+			local minH = props.minHeight or 38
+
+			local btn = Util.make("TextButton", {
+				Name = "ProtoButton",
+				Text = "",
+				AutoButtonColor = false,
+				BackgroundColor3 = style.bg or Theme.Color.Panel,
+				BackgroundTransparency = style.bg and 0 or 1,
+				Size = props.size or UDim2.new(1, 0, 0, minH),
+				LayoutOrder = props.layoutOrder or 0,
+				BorderSizePixel = 0,
+			}, props.parent) :: TextButton
+
+			-- Angles nets = identité. On garde un radius quasi nul.
+			Util.corner(Theme.Shape.CornerSoft, btn)
+			local stroke = Util.stroke(style.border, Theme.Shape.Stroke, 0, btn)
+
+			-- Hauteur mini + garde-fou responsive.
+			Util.sizeConstraint(Vector2.new(48, minH), Vector2.new(math.huge, minH + 14), btn)
+
+			-- Label (mono, uppercase pour la vibe "protocole").
+			local label = Util.make("TextLabel", {
+				Name = "Label",
+				BackgroundTransparency = 1,
+				Size = UDim2.fromScale(1, 1),
+				Font = Theme.Font.Mono,
+				Text = string.upper(props.text or "BUTTON"),
+				TextColor3 = style.text,
+				TextSize = Theme.Text.Body,
+				TextXAlignment = Enum.TextXAlignment.Center,
+			}, btn) :: TextLabel
+			Util.textConstraint(11, 18, label)
+
+			-- Glow réel pour la variante primary.
+			local glow = nil
+			if style.glow then
+				glow = Glow.attach(btn, {
+					color = Theme.Color.Primary,
+					rest = 0.6, active = 0.2, spread = Theme.Glow.Spread,
+					stroke = false, -- on a déjà notre liseré net ci-dessus
+				})
+			end
+
+			local self = setmetatable({
+				instance = btn,
+				_label = label,
+				_stroke = stroke,
+				_glow = glow,
+				_variant = variant,
+				_style = style,
+				_enabled = variant ~= "disabled",
+				_conns = {} :: {RBXScriptConnection},
+			}, Button)
+
+			-- ---- États visuels ----
+			local function toRest()
+				if not self._enabled then return end
+				Util.tween(btn, { BackgroundColor3 = style.bg or Theme.Color.Panel }, Theme.Motion.Fast)
+				if glow then glow:setActive(false) end
+			end
+			local function toHover()
+				if not self._enabled then return end
+				local hv = style.bg and (style.bg :: Color3):Lerp(Color3.new(1,1,1), 0.12) or Theme.Color.Header
+				Util.tween(btn, { BackgroundColor3 = hv }, Theme.Motion.Fast)
+				if glow then glow:setActive(true) end
+			end
+
+			table.insert(self._conns, (Util.hover(btn, toHover, toRest) :: any))
+
+			-- Pressed : enfoncement (léger scale down via UDim offset).
+			table.insert(self._conns, btn.MouseButton1Down:Connect(function()
+				if not self._enabled then return end
+				Util.tween(btn, { Size = btn.Size - UDim2.fromOffset(0, 2) }, Theme.Motion.Fast)
+			end))
+			table.insert(self._conns, btn.MouseButton1Up:Connect(function()
+				if not self._enabled then return end
+				Util.tween(btn, { Size = props.size or UDim2.new(1, 0, 0, minH) }, Theme.Motion.Fast)
+			end))
+
+			-- Focus (sélection manette/clavier) : liseré accentué.
+			table.insert(self._conns, btn.SelectionGained:Connect(function()
+				Util.tween(stroke, { Thickness = Theme.Shape.StrokeThick }, Theme.Motion.Fast)
+			end))
+			table.insert(self._conns, btn.SelectionLost:Connect(function()
+				Util.tween(stroke, { Thickness = Theme.Shape.Stroke }, Theme.Motion.Fast)
+			end))
+
+			-- Click débounçé (anti double-tap mobile).
+			if props.onClick then
+				local guarded = Util.debounce(props.onClick, 0.25)
+				table.insert(self._conns, btn.Activated:Connect(function()
+					if self._enabled then guarded() end
+				end))
+			end
+
+			return self
+		end
+
+		function Button:setEnabled(on: boolean)
+			self._enabled = on
+			local style = on and self._style or styleFor("disabled")
+			self.instance.BackgroundColor3 = style.bg or Theme.Color.Panel
+			self._label.TextColor3 = style.text
+			self._stroke.Color = style.border
+			self.instance.Active = on
+			self.instance.AutoButtonColor = false
+			if self._glow then self._glow:setActive(false) end
+		end
+
+		function Button:setText(t: string)
+			self._label.Text = string.upper(t)
+		end
+
+		function Button:destroy()
+			for _, c in ipairs(self._conns) do
+				if typeof(c) == "RBXScriptConnection" then
+					c:Disconnect()
+				elseif typeof(c) == "function" then
+					c() -- fonction de nettoyage (ex: Util.hover)
+				end
+			end
+			if self._glow then self._glow:destroy() end
+			self.instance:Destroy()
+		end
+
+		return Button
+
+	end
+
+	__loaders[__n_Components_TextInput] = function(script, require)
+		--!strict
+		-- ProtocolUI / Components / TextInput.lua
+		-- =====================================================================
+		-- Champ de saisie brutaliste : placeholder, focus state (liseré rouge + glow),
+		-- label optionnel au-dessus. Angles nets, mono.
+		--
+		-- API :
+		--   local TextInput = require(...Components.TextInput)
+		--   local field = TextInput.new({
+		--       label = "TARGET",
+		--       placeholder = "enter value...",
+		--       text = "",
+		--       clearOnFocus = false,
+		--       onChanged = function(txt) end,
+		--       onSubmit  = function(txt) end,
+		--       parent = frame,
+		--   })
+		--   field.instance     -> conteneur Frame
+		--   field:getText()    -> string
+		--   field:setText("x")
+		--   field:destroy()
+		-- =====================================================================
+
+		local Theme = require(script.Parent.Parent.Theme)
+		local Util  = require(script.Parent.Parent.Util)
+
+		local TextInput = {}
+		TextInput.__index = TextInput
+
+		type InputProps = {
+			label: string?,
+			placeholder: string?,
+			text: string?,
+			clearOnFocus: boolean?,
+			layoutOrder: number?,
+			onChanged: ((text: string) -> ())?,
+			onSubmit: ((text: string) -> ())?,
+			parent: Instance?,
+		}
+
+		function TextInput.new(props: InputProps)
+			-- Conteneur vertical : [label] + [box].
+			local root = Util.make("Frame", {
+				Name = "ProtoInput",
+				BackgroundTransparency = 1,
+				Size = UDim2.new(1, 0, 0, props.label and 58 or 38),
+				LayoutOrder = props.layoutOrder or 0,
+				AutomaticSize = Enum.AutomaticSize.Y,
+			}, props.parent)
+			Util.vlist(4, root)
+
+			-- Label optionnel.
+			if props.label then
+				local lbl = Util.make("TextLabel", {
+					Name = "FieldLabel",
+					BackgroundTransparency = 1,
+					Size = UDim2.new(1, 0, 0, 14),
+					Font = Theme.Font.Mono,
+					Text = string.upper(props.label),
+					TextColor3 = Theme.Color.NavMuted,
+					TextSize = Theme.Text.Small,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					LayoutOrder = 1,
+				}, root)
+				Util.textConstraint(10, 15, lbl)
+			end
+
+			-- La box elle-même.
+			local box = Util.make("TextBox", {
+				Name = "Box",
+				BackgroundColor3 = Theme.Color.Header,
+				Size = UDim2.new(1, 0, 0, 38),
+				Font = Theme.Font.Mono,
+				Text = props.text or "",
+				PlaceholderText = props.placeholder or "",
+				PlaceholderColor3 = Theme.Color.Deep,
+				TextColor3 = Theme.Color.Text,
+				TextSize = Theme.Text.Body,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				ClearTextOnFocus = props.clearOnFocus or false,
+				ClipsDescendants = true,
+				BorderSizePixel = 0,
+				LayoutOrder = 2,
+			}, root) :: TextBox
+			Util.corner(Theme.Shape.CornerSoft, box)
+			Util.paddingXY(12, 0, box)
+			Util.textConstraint(11, 18, box)
+			Util.sizeConstraint(Vector2.new(60, 34), Vector2.new(math.huge, 52), box)
+			local stroke = Util.stroke(Theme.Color.Border, Theme.Shape.Stroke, 0, box)
+
+			local self = setmetatable({
+				instance = root,
+				_box = box,
+				_stroke = stroke,
+				_conns = {} :: {RBXScriptConnection},
+			}, TextInput)
+
+			-- Focus : liseré rouge vif. Blur : retour bordure neutre.
+			table.insert(self._conns, box.Focused:Connect(function()
+				Util.tween(stroke, { Color = Theme.Color.Primary, Thickness = Theme.Shape.StrokeThick }, Theme.Motion.Fast)
+				Util.tween(box, { BackgroundColor3 = Theme.Color.Header:Lerp(Theme.Color.Primary, 0.06) }, Theme.Motion.Fast)
+			end))
+			table.insert(self._conns, box.FocusLost:Connect(function(enterPressed)
+				Util.tween(stroke, { Color = Theme.Color.Border, Thickness = Theme.Shape.Stroke }, Theme.Motion.Fast)
+				Util.tween(box, { BackgroundColor3 = Theme.Color.Header }, Theme.Motion.Fast)
+				if enterPressed and props.onSubmit then props.onSubmit(box.Text) end
+			end))
+
+			if props.onChanged then
+				table.insert(self._conns, box:GetPropertyChangedSignal("Text"):Connect(function()
+					props.onChanged(box.Text)
+				end))
+			end
+
+			return self
+		end
+
+		function TextInput:getText(): string
+			return self._box.Text
+		end
+
+		function TextInput:setText(t: string)
+			self._box.Text = t
+		end
+
+		function TextInput:destroy()
+			for _, c in ipairs(self._conns) do c:Disconnect() end
+			self.instance:Destroy()
+		end
+
+		return TextInput
+
+	end
+
+	__loaders[__n_Components_Toggle] = function(script, require)
+		--!strict
+		-- ProtocolUI / Components / Toggle.lua
+		-- =====================================================================
+		-- Toggle SIGNATURE du concept : un CARRÉ (pas de switch rond) qui se remplit
+		-- de rouge avec glow quand actif. Reproduit `.proto-sq` / `.proto-sq.on`
+		-- (box-shadow:0 0 10px rgba(220,38,38,.6)).
+		-- Une ligne complète = label à gauche + carré à droite (comme .proto-opt).
+		--
+		-- API :
+		--   local Toggle = require(...Components.Toggle)
+		--   local t = Toggle.new({
+		--       label = "AUTO_ATTACK",
+		--       value = true,
+		--       onChanged = function(on) end,
+		--       parent = frame,
+		--   })
+		--   t.instance -> Frame ligne
+		--   t:get() / t:set(bool) / t:destroy()
+		-- =====================================================================
+
+		local Theme = require(script.Parent.Parent.Theme)
+		local Util  = require(script.Parent.Parent.Util)
+		local Glow  = require(script.Parent.Parent.Glow)
+
+		local Toggle = {}
+		Toggle.__index = Toggle
+
+		type ToggleProps = {
+			label: string?,
+			value: boolean?,
+			layoutOrder: number?,
+			onChanged: ((on: boolean) -> ())?,
+			parent: Instance?,
+		}
+
+		function Toggle.new(props: ToggleProps)
+			-- Ligne : label ................ [carré]
+			local row = Util.make("Frame", {
+				Name = "ProtoToggle",
+				BackgroundTransparency = 1,
+				Size = UDim2.new(1, 0, 0, 34),
+				LayoutOrder = props.layoutOrder or 0,
+			}, props.parent)
+			Util.sizeConstraint(Vector2.new(0, 30), Vector2.new(math.huge, 46), row)
+
+			local label = Util.make("TextLabel", {
+				Name = "Label",
+				BackgroundTransparency = 1,
+				AnchorPoint = Vector2.new(0, 0.5),
+				Position = UDim2.fromScale(0, 0.5),
+				Size = UDim2.new(1, -34, 1, 0),
+				Font = Theme.Font.Mono,
+				Text = props.label or "OPTION",
+				TextColor3 = Theme.Color.Text,
+				TextSize = Theme.Text.Body,
+				TextXAlignment = Enum.TextXAlignment.Left,
+			}, row)
+			Util.textConstraint(11, 18, label)
+
+			-- Le carré cliquable, ancré à droite, ratio 1:1 pour rester carré partout.
+			local sq = Util.make("TextButton", {
+				Name = "Square",
+				Text = "",
+				AutoButtonColor = false,
+				AnchorPoint = Vector2.new(1, 0.5),
+				Position = UDim2.fromScale(1, 0.5),
+				Size = UDim2.fromOffset(18, 18),
+				BackgroundColor3 = Theme.Color.Panel,
+				BackgroundTransparency = 0,
+				BorderSizePixel = 0,
+			}, row) :: TextButton
+			Util.aspect(1, sq) -- toujours carré
+			-- angles nets : radius 0 (identité)
+			local stroke = Util.stroke(Theme.Color.Primary, Theme.Shape.Stroke, 0, sq)
+
+			-- Halo rouge (le fameux box-shadow). Actif seulement quand ON.
+			local glow = Glow.attach(sq, {
+				color = Theme.Color.Primary, rest = 1, active = 0.25, spread = 12, stroke = false,
+			})
+
+			local self = setmetatable({
+				instance = row,
+				_sq = sq,
+				_stroke = stroke,
+				_glow = glow,
+				_value = props.value == true,
+				_onChanged = props.onChanged,
+				_conns = {} :: {any},
+			}, Toggle)
+
+			local function render(animated: boolean)
+				local d = animated and Theme.Motion.Normal or 0
+				if self._value then
+					Util.tween(sq, { BackgroundColor3 = Theme.Color.Primary }, d)
+					glow:setActive(true)
+				else
+					Util.tween(sq, { BackgroundColor3 = Theme.Color.Panel }, d)
+					glow:setActive(false)
+				end
+			end
+			self._render = render
+			render(false)
+
+			local flip = Util.debounce(function()
+				self._value = not self._value
+				render(true)
+				if self._onChanged then self._onChanged(self._value) end
+			end, 0.15)
+			table.insert(self._conns, sq.Activated:Connect(flip))
+
+			-- Hover : liseré plus vif.
+			table.insert(self._conns, Util.hover(sq,
+				function() Util.tween(stroke, { Thickness = Theme.Shape.StrokeThick }, Theme.Motion.Fast) end,
+				function() Util.tween(stroke, { Thickness = Theme.Shape.Stroke }, Theme.Motion.Fast) end
+			))
+
+			return self
+		end
+
+		function Toggle:get(): boolean
+			return self._value
+		end
+
+		function Toggle:set(on: boolean, silent: boolean?)
+			self._value = on
+			self._render(true)
+			if not silent and self._onChanged then self._onChanged(on) end
+		end
+
+		function Toggle:destroy()
+			for _, c in ipairs(self._conns) do
+				if typeof(c) == "RBXScriptConnection" then c:Disconnect()
+				elseif typeof(c) == "function" then c() end
+			end
+			self._glow:destroy()
+			self.instance:Destroy()
+		end
+
+		return Toggle
+
+	end
+
+	__loaders[__n_Components_Slider] = function(script, require)
+		--!strict
+		-- ProtocolUI / Components / Slider.lua
+		-- =====================================================================
+		-- Slider brutaliste : rail net, remplissage rouge avec glow, poignée carrée.
+		-- Gère souris ET tactile (drag continu via UserInputService).
+		-- Affiche label + valeur courante (ex: "RANGE  85 STUDS").
+		--
+		-- API :
+		--   local Slider = require(...Components.Slider)
+		--   local s = Slider.new({
+		--       label = "RANGE", min = 0, max = 100, value = 85, step = 1,
+		--       suffix = "STUDS",
+		--       onChanged = function(v) end,
+		--       parent = frame,
+		--   })
+		--   s:get() / s:set(v) / s:destroy()
+		-- =====================================================================
+
+		local UserInputService = game:GetService("UserInputService")
+		local Theme = require(script.Parent.Parent.Theme)
+		local Util  = require(script.Parent.Parent.Util)
+		local Glow  = require(script.Parent.Parent.Glow)
+
+		local Slider = {}
+		Slider.__index = Slider
+
+		type SliderProps = {
+			label: string?,
+			min: number?,
+			max: number?,
+			value: number?,
+			step: number?,
+			suffix: string?,
+			layoutOrder: number?,
+			onChanged: ((v: number) -> ())?,
+			parent: Instance?,
+		}
+
+		function Slider.new(props: SliderProps)
+			local min = props.min or 0
+			local max = props.max or 100
+			local step = props.step or 1
+			local value = math.clamp(props.value or min, min, max)
+
+			local root = Util.make("Frame", {
+				Name = "ProtoSlider",
+				BackgroundTransparency = 1,
+				Size = UDim2.new(1, 0, 0, 44),
+				LayoutOrder = props.layoutOrder or 0,
+			}, props.parent)
+			Util.vlist(6, root)
+
+			-- Header : label à gauche, valeur à droite.
+			local head = Util.make("Frame", {
+				Name = "Head", BackgroundTransparency = 1,
+				Size = UDim2.new(1, 0, 0, 16), LayoutOrder = 1,
+			}, root)
+			local lbl = Util.make("TextLabel", {
+				BackgroundTransparency = 1, Size = UDim2.new(0.6, 0, 1, 0),
+				Font = Theme.Font.Mono, Text = string.upper(props.label or "VALUE"),
+				TextColor3 = Theme.Color.Text, TextSize = Theme.Text.Body,
+				TextXAlignment = Enum.TextXAlignment.Left,
+			}, head)
+			Util.textConstraint(11, 18, lbl)
+			local valLbl = Util.make("TextLabel", {
+				Name = "Value", BackgroundTransparency = 1,
+				AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0),
+				Size = UDim2.new(0.4, 0, 1, 0),
+				Font = Theme.Font.Mono, TextColor3 = Theme.Color.Accent, TextSize = Theme.Text.Body,
+				TextXAlignment = Enum.TextXAlignment.Right,
+			}, head)
+			Util.textConstraint(11, 18, valLbl)
+
+			-- Rail (fond) + Fill (remplissage rouge) + Knob (poignée carrée).
+			local rail = Util.make("TextButton", {
+				Name = "Rail", Text = "", AutoButtonColor = false,
+				BackgroundColor3 = Theme.Color.Header,
+				Size = UDim2.new(1, 0, 0, 6), LayoutOrder = 2, BorderSizePixel = 0,
+			}, root) :: TextButton
+			Util.corner(UDim.new(0, 1), rail)
+			Util.stroke(Theme.Color.Divider, 1, 0, rail)
+			-- Zone tactile plus grande sur mobile : rail plus épais.
+			if Util.isTouch() then rail.Size = UDim2.new(1, 0, 0, 12) end
+
+			local fill = Util.make("Frame", {
+				Name = "Fill", BackgroundColor3 = Theme.Color.Primary,
+				Size = UDim2.fromScale(0, 1), BorderSizePixel = 0,
+			}, rail)
+			Util.corner(UDim.new(0, 1), fill)
+			local fillGlow = Glow.attach(fill, { color = Theme.Color.Primary, rest = 0.5, active = 0.25, spread = 8, stroke = false })
+			fillGlow:setActive(true)
+
+			local knob = Util.make("Frame", {
+				Name = "Knob", BackgroundColor3 = Theme.Color.Accent,
+				AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0, 0.5),
+				Size = UDim2.fromOffset(12, 12), BorderSizePixel = 0, ZIndex = 3,
+			}, rail)
+			Util.aspect(1, knob)
+
+			local self = setmetatable({
+				instance = root, _rail = rail, _fill = fill, _knob = knob, _valLbl = valLbl,
+				_glow = fillGlow, _min = min, _max = max, _step = step, _value = value,
+				_suffix = props.suffix, _onChanged = props.onChanged,
+				_conns = {} :: {any}, _dragging = false,
+			}, Slider)
+
+			local function render()
+				local alpha = (self._value - self._min) / (self._max - self._min)
+				self._fill.Size = UDim2.fromScale(alpha, 1)
+				self._knob.Position = UDim2.fromScale(alpha, 0.5)
+				local suffix = self._suffix and (" " .. self._suffix) or ""
+				self._valLbl.Text = tostring(self._value) .. suffix
+			end
+			self._render = render
+			render()
+
+			-- Calcule la valeur depuis une position X écran (souris/doigt).
+			local function setFromX(px: number)
+				local rel = math.clamp((px - rail.AbsolutePosition.X) / rail.AbsoluteSize.X, 0, 1)
+				local raw = self._min + rel * (self._max - self._min)
+				local snapped = math.floor(raw / step + 0.5) * step
+				snapped = math.clamp(snapped, self._min, self._max)
+				if snapped ~= self._value then
+					self._value = snapped
+					render()
+					if self._onChanged then self._onChanged(snapped) end
+				end
+			end
+
+			table.insert(self._conns, rail.InputBegan:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1
+					or input.UserInputType == Enum.UserInputType.Touch then
+					self._dragging = true
+					Util.tween(knob, { Size = UDim2.fromOffset(16, 16) }, Theme.Motion.Fast)
+					setFromX(input.Position.X)
+				end
+			end))
+			table.insert(self._conns, UserInputService.InputChanged:Connect(function(input)
+				if self._dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+					or input.UserInputType == Enum.UserInputType.Touch) then
+					setFromX(input.Position.X)
+				end
+			end))
+			table.insert(self._conns, UserInputService.InputEnded:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1
+					or input.UserInputType == Enum.UserInputType.Touch then
+					if self._dragging then
+						self._dragging = false
+						Util.tween(knob, { Size = UDim2.fromOffset(12, 12) }, Theme.Motion.Fast)
+					end
+				end
+			end))
+
+			return self
+		end
+
+		function Slider:get(): number
+			return self._value
+		end
+
+		function Slider:set(v: number, silent: boolean?)
+			self._value = math.clamp(v, self._min, self._max)
+			self._render()
+			if not silent and self._onChanged then self._onChanged(self._value) end
+		end
+
+		function Slider:destroy()
+			for _, c in ipairs(self._conns) do
+				if typeof(c) == "RBXScriptConnection" then c:Disconnect() end
+			end
+			self._glow:destroy()
+			self.instance:Destroy()
+		end
+
+		return Slider
+
+	end
+
+	__loaders[__n_Components_Checkbox] = function(script, require)
+		--!strict
+		-- ProtocolUI / Components / Checkbox.lua
+		-- =====================================================================
+		-- Case à cocher brutaliste : carré à bord rouge, coche "×" façon terminal
+		-- quand active (rappel des checkboxes ASCII du concept Cyber Terminal, mais
+		-- adapté à la palette Protocol). Différent du Toggle : ici la coche est un
+		-- glyphe, pas un remplissage plein — utile pour des listes de sélection.
+		--
+		-- API :
+		--   local Checkbox = require(...Components.Checkbox)
+		--   local c = Checkbox.new({ label = "ENABLE_X", value = false, onChanged = fn, parent = frame })
+		--   c:get() / c:set(bool) / c:destroy()
+		-- =====================================================================
+
+		local Theme = require(script.Parent.Parent.Theme)
+		local Util  = require(script.Parent.Parent.Util)
+
+		local Checkbox = {}
+		Checkbox.__index = Checkbox
+
+		type CheckboxProps = {
+			label: string?,
+			value: boolean?,
+			layoutOrder: number?,
+			onChanged: ((on: boolean) -> ())?,
+			parent: Instance?,
+		}
+
+		function Checkbox.new(props: CheckboxProps)
+			local row = Util.make("TextButton", {
+				Name = "ProtoCheckbox", Text = "", AutoButtonColor = false,
+				BackgroundTransparency = 1,
+				Size = UDim2.new(1, 0, 0, 30), LayoutOrder = props.layoutOrder or 0,
+			}, props.parent) :: TextButton
+			Util.hlist(10, row)
+			Util.sizeConstraint(Vector2.new(0, 26), Vector2.new(math.huge, 40), row)
+
+			-- La case (carré) + son glyphe.
+			local boxHolder = Util.make("Frame", {
+				Name = "Box", BackgroundColor3 = Theme.Color.Panel,
+				Size = UDim2.fromOffset(16, 16), BorderSizePixel = 0, LayoutOrder = 1,
+			}, row)
+			Util.aspect(1, boxHolder)
+			local stroke = Util.stroke(Theme.Color.Primary, Theme.Shape.Stroke, 0, boxHolder)
+			local mark = Util.make("TextLabel", {
+				Name = "Mark", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1),
+				Font = Theme.Font.Mono, Text = "×", TextColor3 = Theme.Color.Primary,
+				TextSize = 16, TextTransparency = 1,
+			}, boxHolder)
+			Util.textConstraint(12, 20, mark)
+
+			local label = Util.make("TextLabel", {
+				Name = "Label", BackgroundTransparency = 1,
+				Size = UDim2.new(1, -26, 1, 0),
+				Font = Theme.Font.Mono, Text = props.label or "OPTION",
+				TextColor3 = Theme.Color.Text, TextSize = Theme.Text.Body,
+				TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 2,
+			}, row)
+			Util.textConstraint(11, 18, label)
+
+			local self = setmetatable({
+				instance = row, _box = boxHolder, _mark = mark, _stroke = stroke,
+				_value = props.value == true, _onChanged = props.onChanged, _conns = {} :: {any},
+			}, Checkbox)
+
+			local function render(animated: boolean)
+				local d = animated and Theme.Motion.Fast or 0
+				if self._value then
+					Util.tween(mark, { TextTransparency = 0 }, d)
+					Util.tween(boxHolder, { BackgroundColor3 = Theme.Color.Header }, d)
+				else
+					Util.tween(mark, { TextTransparency = 1 }, d)
+					Util.tween(boxHolder, { BackgroundColor3 = Theme.Color.Panel }, d)
+				end
+			end
+			self._render = render
+			render(false)
+
+			local flip = Util.debounce(function()
+				self._value = not self._value
+				render(true)
+				if self._onChanged then self._onChanged(self._value) end
+			end, 0.15)
+			table.insert(self._conns, row.Activated:Connect(flip))
+			table.insert(self._conns, Util.hover(row,
+				function() Util.tween(stroke, { Thickness = Theme.Shape.StrokeThick }, Theme.Motion.Fast) end,
+				function() Util.tween(stroke, { Thickness = Theme.Shape.Stroke }, Theme.Motion.Fast) end
+			))
+
+			return self
+		end
+
+		function Checkbox:get(): boolean return self._value end
+		function Checkbox:set(on: boolean, silent: boolean?)
+			self._value = on
+			self._render(true)
+			if not silent and self._onChanged then self._onChanged(on) end
+		end
+		function Checkbox:destroy()
+			for _, c in ipairs(self._conns) do
+				if typeof(c) == "RBXScriptConnection" then c:Disconnect()
+				elseif typeof(c) == "function" then c() end
+			end
+			self.instance:Destroy()
+		end
+
+		return Checkbox
+
+	end
+
+	__loaders[__n_Components_Card] = function(script, require)
+		--!strict
+		-- ProtocolUI / Components / Card.lua
+		-- =====================================================================
+		-- Panneau/Carte réutilisable : fond `.proto` (#0f0a0b), bordure nette #3a1518,
+		-- titre optionnel avec séparateur. Auto-layout vertical des enfants.
+		-- Sert de conteneur pour empiler Toggles/Sliders/etc.
+		--
+		-- API :
+		--   local Card = require(...Components.Card)
+		--   local card = Card.new({ title = "FARM", parent = frame })
+		--   card.content   -> Frame où parenter les composants (auto vlist)
+		--   card.instance  -> Frame racine
+		--   card:destroy()
+		-- =====================================================================
+
+		local Theme = require(script.Parent.Parent.Theme)
+		local Util  = require(script.Parent.Parent.Util)
+
+		local Card = {}
+		Card.__index = Card
+
+		type CardProps = {
+			title: string?,
+			size: UDim2?,
+			gap: number?,
+			layoutOrder: number?,
+			parent: Instance?,
+		}
+
+		function Card.new(props: CardProps)
+			local root = Util.make("Frame", {
+				Name = "ProtoCard",
+				BackgroundColor3 = Theme.Color.Panel,
+				Size = props.size or UDim2.new(1, 0, 0, 0),
+				AutomaticSize = props.size and Enum.AutomaticSize.None or Enum.AutomaticSize.Y,
+				LayoutOrder = props.layoutOrder or 0,
+				BorderSizePixel = 0,
+			}, props.parent)
+			Util.corner(Theme.Shape.CornerSoft, root)
+			Util.stroke(Theme.Color.Border, Theme.Shape.Stroke, 0, root)
+			Util.padding(Theme.Space.LG, root)
+			local list = Util.vlist(Theme.Space.SM, root)
+			list.HorizontalAlignment = Enum.HorizontalAlignment.Left
+
+			-- Titre + séparateur (façon .proto-opt border-bottom).
+			if props.title then
+				local head = Util.make("TextLabel", {
+					Name = "Title", BackgroundTransparency = 1,
+					Size = UDim2.new(1, 0, 0, 18),
+					Font = Theme.Font.Mono, Text = string.upper(props.title),
+					TextColor3 = Theme.Color.Accent, TextSize = Theme.Text.Title,
+					TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = -2,
+				}, root)
+				Util.textConstraint(12, 20, head)
+				Util.make("Frame", {
+					Name = "Divider", BackgroundColor3 = Theme.Color.Divider,
+					Size = UDim2.new(1, 0, 0, 1), BorderSizePixel = 0, LayoutOrder = -1,
+				}, root)
+			end
+
+			-- content : là où on empile les composants. Ici c'est root lui-même,
+			-- mais on l'expose séparément pour rester cohérent avec les autres libs.
+			local self = setmetatable({ instance = root, content = root, _list = list }, Card)
+			return self
+		end
+
+		function Card:destroy()
+			self.instance:Destroy()
+		end
+
+		return Card
+
+	end
+
+	__loaders[__n_Components_Nav] = function(script, require)
+		--!strict
+		-- ProtocolUI / Components / Nav.lua
+		-- =====================================================================
+		-- Barre d'onglets horizontale (TopBar). Reproduit `.proto-nav` :
+		-- onglets uppercase, letter-spacing, l'actif prend un fond rouge plein
+		-- (#dc2626) avec texte sombre. Séparateur bas #3a1518.
+		--
+		-- API :
+		--   local Nav = require(...Components.Nav)
+		--   local nav = Nav.new({
+		--       tabs = {"INFO", "FARM", "CONFIG"},
+		--       active = 1,
+		--       onChanged = function(index, name) end,
+		--       parent = frame,
+		--   })
+		--   nav:setActive(2)
+		--   nav.instance / nav:destroy()
+		-- =====================================================================
+
+		local Theme = require(script.Parent.Parent.Theme)
+		local Util  = require(script.Parent.Parent.Util)
+
+		local Nav = {}
+		Nav.__index = Nav
+
+		type NavProps = {
+			tabs: {string},
+			active: number?,
+			layoutOrder: number?,
+			onChanged: ((index: number, name: string) -> ())?,
+			parent: Instance?,
+		}
+
+		function Nav.new(props: NavProps)
+			local root = Util.make("Frame", {
+				Name = "ProtoNav", BackgroundColor3 = Theme.Color.Panel,
+				Size = UDim2.new(1, 0, 0, 38), LayoutOrder = props.layoutOrder or 0,
+				BorderSizePixel = 0,
+			}, props.parent)
+			-- Séparateur bas.
+			Util.make("Frame", {
+				Name = "Underline", BackgroundColor3 = Theme.Color.Border,
+				AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1),
+				Size = UDim2.new(1, 0, 0, 1), BorderSizePixel = 0,
+			}, root)
+			local list = Util.hlist(0, root)
+			list.HorizontalAlignment = Enum.HorizontalAlignment.Left
+
+			local self = setmetatable({
+				instance = root, _tabs = {} :: {TextButton},
+				_active = props.active or 1, _onChanged = props.onChanged, _conns = {} :: {any},
+			}, Nav)
+
+			local count = #props.tabs
+			for i, name in ipairs(props.tabs) do
+				local tab = Util.make("TextButton", {
+					Name = "Tab_" .. name, Text = string.upper(name), AutoButtonColor = false,
+					BackgroundColor3 = Theme.Color.Primary, BackgroundTransparency = 1,
+					Size = UDim2.new(1 / count, 0, 1, 0),
+					Font = Theme.Font.Mono, TextColor3 = Theme.Color.NavMuted,
+					TextSize = Theme.Text.Small, BorderSizePixel = 0, LayoutOrder = i,
+				}, root) :: TextButton
+				Util.textConstraint(10, 15, tab)
+				self._tabs[i] = tab
+
+				local select = Util.debounce(function() self:setActive(i) end, 0.1)
+				table.insert(self._conns, tab.Activated:Connect(select))
+				-- Hover sur onglet inactif : texte plus clair.
+				table.insert(self._conns, Util.hover(tab,
+					function() if i ~= self._active then Util.tween(tab, { TextColor3 = Theme.Color.Accent }, Theme.Motion.Fast) end end,
+					function() if i ~= self._active then Util.tween(tab, { TextColor3 = Theme.Color.NavMuted }, Theme.Motion.Fast) end end
+				))
+			end
+
+			self:_render(false)
+			return self
+		end
+
+		function Nav:_render(animated: boolean)
+			local d = animated and Theme.Motion.Normal or 0
+			for i, tab in ipairs(self._tabs) do
+				if i == self._active then
+					Util.tween(tab, { BackgroundTransparency = 0, TextColor3 = Theme.Color.OnPrimary }, d)
+				else
+					Util.tween(tab, { BackgroundTransparency = 1, TextColor3 = Theme.Color.NavMuted }, d)
+				end
+			end
+		end
+
+		function Nav:setActive(index: number)
+			if index == self._active then return end
+			self._active = index
+			self:_render(true)
+			if self._onChanged then
+				self._onChanged(index, self._tabs[index].Text)
+			end
+		end
+
+		function Nav:getActive(): number return self._active end
+
+		function Nav:destroy()
+			for _, c in ipairs(self._conns) do
+				if typeof(c) == "RBXScriptConnection" then c:Disconnect()
+				elseif typeof(c) == "function" then c() end
+			end
+			self.instance:Destroy()
+		end
+
+		return Nav
+
+	end
+
+	__loaders[__n_Components_Badge] = function(script, require)
+		--!strict
+		-- ProtocolUI / Components / Badge.lua
+		-- =====================================================================
+		-- Badge / Tag / Status indicator. Reproduit `.proto-v` (texte rouge accent)
+		-- et le statut "● INJECTED". Trois formes :
+		--   Badge.new{...}   -> pastille texte (tag)
+		--   Badge.status{...}-> point coloré + libellé (avec glow/pulse optionnel)
+		--   Badge.stat{...}  -> ligne "LABEL ....... value" (façon .proto-opt info)
+		--
+		-- API status :
+		--   local Badge = require(...Components.Badge)
+		--   local st = Badge.status({ text = "INJECTED", tone = "primary", pulse = true, parent = frame })
+		--   st:setText("OFFLINE"); st:setTone("dim")
+		-- =====================================================================
+
+		local Theme = require(script.Parent.Parent.Theme)
+		local Util  = require(script.Parent.Parent.Util)
+		local Glow  = require(script.Parent.Parent.Glow)
+
+		local Badge = {}
+
+		local TONES = {
+			primary = Theme.Color.Accent,
+			success = Theme.Color.Success,
+			danger  = Theme.Color.Danger,
+			dim     = Theme.Color.NavMuted,
+		}
+
+		-- --- Tag simple (pastille texte encadrée) ----------------------------
+		type TagProps = {
+			text: string?, tone: string?, layoutOrder: number?, parent: Instance?,
+		}
+		function Badge.new(props: TagProps): TextLabel
+			local color = TONES[props.tone or "primary"] or Theme.Color.Accent
+			local tag = Util.make("TextLabel", {
+				Name = "ProtoTag", BackgroundColor3 = Theme.Color.Header,
+				AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.new(0, 0, 0, 20),
+				Font = Theme.Font.Mono, Text = string.upper(props.text or "TAG"),
+				TextColor3 = color, TextSize = Theme.Text.Small,
+				LayoutOrder = props.layoutOrder or 0, BorderSizePixel = 0,
+			}, props.parent) :: TextLabel
+			Util.paddingXY(8, 3, tag)
+			Util.stroke(color, 1, 0.4, tag)
+			Util.textConstraint(10, 15, tag)
+			return tag
+		end
+
+		-- --- Status (point + libellé), avec pulse optionnel ------------------
+		type StatusProps = {
+			text: string?, tone: string?, pulse: boolean?, layoutOrder: number?, parent: Instance?,
+		}
+		local Status = {}
+		Status.__index = Status
+
+		function Badge.status(props: StatusProps)
+			local tone = props.tone or "primary"
+			local color = TONES[tone] or Theme.Color.Accent
+
+			local row = Util.make("Frame", {
+				Name = "ProtoStatus", BackgroundTransparency = 1,
+				AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.new(0, 0, 0, 18),
+				LayoutOrder = props.layoutOrder or 0,
+			}, props.parent)
+			Util.hlist(6, row)
+
+			local dot = Util.make("Frame", {
+				Name = "Dot", BackgroundColor3 = color,
+				Size = UDim2.fromOffset(8, 8), BorderSizePixel = 0, LayoutOrder = 1,
+			}, row)
+			Util.corner(UDim.new(1, 0), dot) -- point rond
+			local glow = Glow.attach(dot, { color = color, rest = 0.4, active = 0.1, spread = 8, stroke = false })
+
+			local lbl = Util.make("TextLabel", {
+				Name = "Text", BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.X,
+				Size = UDim2.new(0, 0, 1, 0), Font = Theme.Font.Mono,
+				Text = string.upper(props.text or "STATUS"), TextColor3 = color,
+				TextSize = Theme.Text.Body, LayoutOrder = 2,
+			}, row)
+			Util.textConstraint(11, 18, lbl)
+
+			local self = setmetatable({ instance = row, _dot = dot, _lbl = lbl, _glow = glow }, Status)
+			if props.pulse then glow:pulse(Theme.Motion.Pulse) else glow:setActive(true) end
+			return self
+		end
+
+		function Status:setText(t: string) self._lbl.Text = string.upper(t) end
+		function Status:setTone(tone: string)
+			local color = TONES[tone] or Theme.Color.Accent
+			self._dot.BackgroundColor3 = color
+			self._lbl.TextColor3 = color
+		end
+		function Status:destroy() self._glow:destroy(); self.instance:Destroy() end
+
+		-- --- Stat row ("LABEL ......... value") ------------------------------
+		type StatProps = {
+			label: string?, value: string?, layoutOrder: number?, parent: Instance?,
+		}
+		function Badge.stat(props: StatProps): (Frame, TextLabel)
+			local row = Util.make("Frame", {
+				Name = "ProtoStat", BackgroundTransparency = 1,
+				Size = UDim2.new(1, 0, 0, 26), LayoutOrder = props.layoutOrder or 0,
+			}, props.parent)
+			Util.make("Frame", { -- séparateur bas façon .proto-opt
+				Name = "Divider", BackgroundColor3 = Theme.Color.Divider,
+				AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1),
+				Size = UDim2.new(1, 0, 0, 1), BorderSizePixel = 0,
+			}, row)
+			local lbl = Util.make("TextLabel", {
+				BackgroundTransparency = 1, AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5),
+				Size = UDim2.new(0.6, 0, 1, 0), Font = Theme.Font.Mono, Text = string.upper(props.label or ""),
+				TextColor3 = Theme.Color.Text, TextSize = Theme.Text.Body, TextXAlignment = Enum.TextXAlignment.Left,
+			}, row)
+			Util.textConstraint(11, 18, lbl)
+			local val = Util.make("TextLabel", {
+				Name = "Value", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.fromScale(1, 0.5),
+				Size = UDim2.new(0.4, 0, 1, 0), Font = Theme.Font.Mono, Text = props.value or "",
+				TextColor3 = Theme.Color.Accent, TextSize = Theme.Text.Body, TextXAlignment = Enum.TextXAlignment.Right,
+			}, row)
+			Util.textConstraint(11, 18, val)
+			return row, val
+		end
+
+		return Badge
+
+	end
+
+	__loaders[__n_Components_Modal] = function(script, require)
+		--!strict
+		-- ProtocolUI / Components / Modal.lua
+		-- =====================================================================
+		-- Fenêtre modale/popup : overlay sombre + panneau brutaliste centré,
+		-- animation d'ouverture (fade overlay + scale/rise du panneau) et fermeture.
+		-- Responsive : le panneau est dimensionné en Scale avec bornes px + ratio.
+		--
+		-- API :
+		--   local Modal = require(...Components.Modal)
+		--   local m = Modal.new({
+		--       title = "CONFIRM",
+		--       parent = playerGui / screenGui,   -- idéalement un ScreenGui
+		--   })
+		--   m.content   -> Frame (auto vlist) où mettre le corps
+		--   m:open() / m:close()
+		--   m.onClose = function() end   -- callback optionnel
+		-- =====================================================================
+
+		local Theme = require(script.Parent.Parent.Theme)
+		local Util  = require(script.Parent.Parent.Util)
+
+		local Modal = {}
+		Modal.__index = Modal
+
+		type ModalProps = {
+			title: string?,
+			width: number?,   -- largeur cible en px (bornée)
+			parent: Instance?,
+		}
+
+		function Modal.new(props: ModalProps)
+			-- Overlay plein écran (capte les clics, assombrit le fond).
+			local overlay = Util.make("TextButton", {
+				Name = "ProtoModalOverlay", Text = "", AutoButtonColor = false,
+				BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 1,
+				Size = UDim2.fromScale(1, 1), Visible = false, ZIndex = 50,
+				BorderSizePixel = 0,
+			}, props.parent) :: TextButton
+
+			-- Panneau centré, responsive.
+			local panel = Util.make("Frame", {
+				Name = "Panel", BackgroundColor3 = Theme.Color.Panel,
+				AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+				Size = UDim2.fromScale(0.9, 0), AutomaticSize = Enum.AutomaticSize.Y,
+				ZIndex = 51, BorderSizePixel = 0,
+				Active = true, -- sink les clics : cliquer le panneau ne ferme pas la modale
+			}, overlay)
+			Util.corner(Theme.Shape.CornerSoft, panel)
+			Util.stroke(Theme.Color.Border, Theme.Shape.StrokeThick, 0, panel)
+			-- Largeur bornée (mobile -> plein, desktop -> ~width px).
+			Util.sizeConstraint(Vector2.new(240, 0), Vector2.new(props.width or 420, math.huge), panel)
+			Util.padding(Theme.Space.LG, panel)
+			Util.vlist(Theme.Space.MD, panel)
+
+			-- Header : titre + bouton fermer [×].
+			local head = Util.make("Frame", {
+				Name = "Head", BackgroundColor3 = Theme.Color.Header,
+				Size = UDim2.new(1, 0, 0, 30), ZIndex = 52, BorderSizePixel = 0, LayoutOrder = 1,
+			}, panel)
+			Util.paddingXY(10, 0, head)
+			local title = Util.make("TextLabel", {
+				BackgroundTransparency = 1, AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5),
+				Size = UDim2.new(1, -30, 1, 0), Font = Theme.Font.Mono, Text = string.upper(props.title or "MODAL"),
+				TextColor3 = Theme.Color.Accent, TextSize = Theme.Text.Title, TextXAlignment = Enum.TextXAlignment.Left,
+				ZIndex = 52,
+			}, head)
+			Util.textConstraint(12, 20, title)
+			local closeBtn = Util.make("TextButton", {
+				Name = "Close", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.fromScale(1, 0.5),
+				Size = UDim2.fromOffset(22, 22), BackgroundTransparency = 1, Text = "×",
+				Font = Theme.Font.Mono, TextColor3 = Theme.Color.NavMuted, TextSize = 20, ZIndex = 52,
+				AutoButtonColor = false,
+			}, head) :: TextButton
+
+			-- Zone de contenu.
+			local content = Util.make("Frame", {
+				Name = "Content", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y, ZIndex = 52, LayoutOrder = 2,
+			}, panel)
+			Util.vlist(Theme.Space.SM, content)
+
+			local self = setmetatable({
+				instance = overlay, panel = panel, content = content,
+				onClose = nil :: (() -> ())?, _conns = {} :: {RBXScriptConnection},
+			}, Modal)
+
+			table.insert(self._conns, closeBtn.Activated:Connect(function() self:close() end))
+			table.insert(self._conns, overlay.Activated:Connect(function() self:close() end))
+			table.insert(self._conns, Util.hover(closeBtn,
+				function() Util.tween(closeBtn, { TextColor3 = Theme.Color.Accent }, Theme.Motion.Fast) end,
+				function() Util.tween(closeBtn, { TextColor3 = Theme.Color.NavMuted }, Theme.Motion.Fast) end
+			) :: any)
+
+			return self
+		end
+
+		function Modal:open()
+			self.instance.Visible = true
+			self.instance.BackgroundTransparency = 1
+			self.panel.Position = UDim2.fromScale(0.5, 0.54)
+			Util.tween(self.instance, { BackgroundTransparency = 0.4 }, Theme.Motion.Normal)
+			Util.tween(self.panel, { Position = UDim2.fromScale(0.5, 0.5) }, Theme.Motion.Normal, Enum.EasingStyle.Back)
+		end
+
+		function Modal:close()
+			Util.tween(self.instance, { BackgroundTransparency = 1 }, Theme.Motion.Normal)
+			local t = Util.tween(self.panel, { Position = UDim2.fromScale(0.5, 0.54) }, Theme.Motion.Fast)
+			t.Completed:Once(function()
+				self.instance.Visible = false
+				if self.onClose then self.onClose() end
+			end)
+		end
+
+		function Modal:destroy()
+			for _, c in ipairs(self._conns) do
+				if typeof(c) == "RBXScriptConnection" then c:Disconnect()
+				elseif typeof(c) == "function" then c() end
+			end
+			self.instance:Destroy()
+		end
+
+		return Modal
+
+	end
+
+	__loaders[__n_Components_Window] = function(script, require)
+		--!strict
+		-- ProtocolUI / Components / Window.lua
+		-- =====================================================================
+		-- COMPOSANT SIGNATURE du concept "07 Protocol".
+		-- Reproduit le panneau `.proto` complet : cadre net #3a1518, header rouge
+		-- `.proto-top` avec titre "// PROTOCOL" (accent #f87171) + identifiant HWID
+		-- (rouge sombre #7f1d1d). Glow rouge ambiant sur le cadre. Draggable
+		-- (souris + tactile). Corps scrollable auto-layouté.
+		--
+		-- Responsive : dimensionné en Scale avec bornes px + ratio verrouillé pour
+		-- rester propre du mobile Roblox à l'ultra-wide.
+		--
+		-- API :
+		--   local Window = require(...Components.Window)
+		--   local win = Window.new({
+		--       title = "// PROTOCOL",
+		--       tag = "HWID:4F2A-91C",
+		--       parent = screenGui,
+		--   })
+		--   win.body   -> ScrollingFrame (auto vlist) où empiler Nav/Cards/etc.
+		--   win:destroy()
+		-- =====================================================================
+
+		local UserInputService = game:GetService("UserInputService")
+		local Theme = require(script.Parent.Parent.Theme)
+		local Util  = require(script.Parent.Parent.Util)
+		local Glow  = require(script.Parent.Parent.Glow)
+
+		local Window = {}
+		Window.__index = Window
+
+		type WindowProps = {
+			title: string?,
+			tag: string?,
+			size: UDim2?,        -- taille en Scale de préférence
+			maxWidth: number?,
+			parent: Instance?,
+			draggable: boolean?,
+		}
+
+		function Window.new(props: WindowProps)
+			local root = Util.make("Frame", {
+				Name = "ProtocolWindow", BackgroundColor3 = Theme.Color.Panel,
+				AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+				Size = props.size or UDim2.fromScale(0.42, 0.6),
+				BorderSizePixel = 0, ClipsDescendants = false,
+			}, props.parent)
+			Util.corner(Theme.Shape.CornerSoft, root)
+			Util.stroke(Theme.Color.Border, Theme.Shape.Stroke, 0, root)
+			-- Bornes : jamais plus petit que 260px, jamais plus large que maxWidth.
+			Util.sizeConstraint(Vector2.new(260, 220), Vector2.new(props.maxWidth or 460, 720), root)
+			-- Ratio verrouillé pour un rendu cohérent sur toutes résolutions.
+			local ratio = Util.aspect(0.72, root)
+			ratio.DominantAxis = Enum.DominantAxis.Height
+
+			-- Halo rouge ambiant (le box-shadow:0 0 ... du .proto). Enfant direct de
+			-- root -> il ne doit PAS être capturé par le UIListLayout, d'où l'inner.
+			local glow = Glow.attach(root, { color = Theme.Color.Primary, rest = 0.75, active = 0.55, spread = 26, stroke = false })
+			glow:setActive(true)
+
+			-- Conteneur interne qui porte le layout (header + body). Sépare le glow
+			-- (posé sur root) de la mise en page (posée sur inner).
+			local inner = Util.make("Frame", {
+				Name = "Inner", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1),
+				BorderSizePixel = 0, ClipsDescendants = true,
+			}, root)
+			Util.corner(Theme.Shape.CornerSoft, inner)
+			local vlist = Util.vlist(0, inner)
+
+			-- ---- Header rouge (.proto-top) ----
+			local header = Util.make("Frame", {
+				Name = "Header", BackgroundColor3 = Theme.Color.Header,
+				Size = UDim2.new(1, 0, 0, 44), BorderSizePixel = 0, LayoutOrder = 1,
+			}, inner)
+			Util.paddingXY(16, 0, header)
+			Util.make("Frame", { -- bordure basse
+				Name = "HBorder", BackgroundColor3 = Theme.Color.Border,
+				AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1),
+				Size = UDim2.new(1, 0, 0, 1), BorderSizePixel = 0,
+			}, header)
+			local title = Util.make("TextLabel", {
+				Name = "Title", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0, 0.5),
+				Position = UDim2.fromScale(0, 0.5), Size = UDim2.new(0.7, 0, 1, 0),
+				Font = Theme.Font.Mono, Text = props.title or "// PROTOCOL",
+				TextColor3 = Theme.Color.Accent, TextSize = Theme.Text.Title,
+				TextXAlignment = Enum.TextXAlignment.Left,
+			}, header)
+			Util.textConstraint(12, 20, title)
+			local tag = Util.make("TextLabel", {
+				Name = "Tag", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0.5),
+				Position = UDim2.fromScale(1, 0.5), Size = UDim2.new(0.4, 0, 1, 0),
+				Font = Theme.Font.Mono, Text = props.tag or "HWID:4F2A-91C",
+				TextColor3 = Theme.Color.Deep, TextSize = Theme.Text.Small,
+				TextXAlignment = Enum.TextXAlignment.Right,
+			}, header)
+			Util.textConstraint(9, 14, tag)
+
+			-- ---- Body scrollable ----
+			local body = Util.make("ScrollingFrame", {
+				Name = "Body", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, -44),
+				LayoutOrder = 2, BorderSizePixel = 0, CanvasSize = UDim2.new(),
+				AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollBarThickness = 3,
+				ScrollBarImageColor3 = Theme.Color.Primary, ScrollBarImageTransparency = 0.3,
+			}, inner) :: ScrollingFrame
+			Util.padding(Theme.Space.LG, body)
+			local blist = Util.vlist(Theme.Space.MD, body)
+			blist.HorizontalAlignment = Enum.HorizontalAlignment.Left
+
+			local self = setmetatable({
+				instance = root, body = body, _header = header, _glow = glow,
+				_conns = {} :: {RBXScriptConnection}, _dragging = false,
+			}, Window)
+
+			-- ---- Drag (souris + tactile) via le header ----
+			if props.draggable ~= false then
+				local dragStart: Vector2? = nil
+				local startPos: UDim2? = nil
+				local dragInput: InputObject? = nil
+
+				table.insert(self._conns, header.InputBegan:Connect(function(input)
+					if input.UserInputType == Enum.UserInputType.MouseButton1
+						or input.UserInputType == Enum.UserInputType.Touch then
+						self._dragging = true
+						dragStart = input.Position
+						startPos = root.Position
+						dragInput = input
+					end
+				end))
+				table.insert(self._conns, UserInputService.InputChanged:Connect(function(input)
+					if self._dragging and input == dragInput and dragStart and startPos then
+						local delta = input.Position - dragStart
+						root.Position = UDim2.new(
+							startPos.X.Scale, startPos.X.Offset + delta.X,
+							startPos.Y.Scale, startPos.Y.Offset + delta.Y
+						)
+					end
+				end))
+				table.insert(self._conns, UserInputService.InputEnded:Connect(function(input)
+					if input == dragInput then self._dragging = false; dragInput = nil end
+				end))
+			end
+
+			return self
+		end
+
+		function Window:destroy()
+			for _, c in ipairs(self._conns) do c:Disconnect() end
+			self._glow:destroy()
+			self.instance:Destroy()
+		end
+
+		return Window
+
+	end
+
+	return __require(__root)
+end
+
+local ProtocolUI = __build_ProtocolUI()
+
+return ProtocolUI
